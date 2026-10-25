@@ -9,6 +9,7 @@ import { Badge, Button, Card, CardHeader, ConfirmDialog, IconButton, Input, Moda
 type UserRow = { id: string; email: string; role: Role; name: string; teacherId: string }
 
 function UserModal({ open, onClose, onSaved, user }: { open: boolean; onClose: () => void; onSaved: () => void; user: UserRow | null }) {
+  const me = useSession((s) => s.user)!
   const teachers = useStore((s) => s.teachers)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -16,6 +17,7 @@ function UserModal({ open, onClose, onSaved, user }: { open: boolean; onClose: (
   const [teacherId, setTeacherId] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const self = !!user && user.id === me.id
 
   useEffect(() => {
     if (!open) return
@@ -26,15 +28,25 @@ function UserModal({ open, onClose, onSaved, user }: { open: boolean; onClose: (
     setError('')
   }, [open, user])
 
-  const valid = password.length >= 8 && (user || (email.trim() && (role !== 'teacher' || teacherId)))
+  const passwordOk = user ? password === '' || password.length >= 8 : password.length >= 8
+  const valid = email.trim().length > 3 && passwordOk && (role !== 'teacher' || !!teacherId)
 
   const submit = async () => {
     setBusy(true)
     setError('')
     try {
-      if (user) await api.patch(`/users/${user.id}`, { password })
-      else await api.post('/users', { email, password, role, teacherId: role === 'teacher' ? teacherId : undefined })
-      toast(user ? 'Пароль изменён' : 'Пользователь создан')
+      if (user) {
+        // отправляем только то, что изменилось
+        const patch: Record<string, string> = {}
+        if (email.trim().toLowerCase() !== user.email) patch.email = email
+        if (role !== user.role) patch.role = role
+        if (role === 'teacher' && teacherId !== user.teacherId) patch.teacherId = teacherId
+        if (password) patch.password = password
+        if (Object.keys(patch).length) await api.patch(`/users/${user.id}`, patch)
+      } else {
+        await api.post('/users', { email, password, role, teacherId: role === 'teacher' ? teacherId : undefined })
+      }
+      toast(user ? 'Изменения сохранены' : 'Пользователь создан')
       onSaved()
       onClose()
     } catch (e) {
@@ -48,8 +60,8 @@ function UserModal({ open, onClose, onSaved, user }: { open: boolean; onClose: (
     <Modal
       open={open}
       onClose={onClose}
-      title={user ? 'Сменить пароль' : 'Новый пользователь'}
-      description={user?.email}
+      title={user ? 'Пользователь' : 'Новый пользователь'}
+      description={user ? ROLE_LABEL[user.role] : 'Он сможет войти по этому email и паролю'}
       width={460}
       footer={
         <>
@@ -58,26 +70,24 @@ function UserModal({ open, onClose, onSaved, user }: { open: boolean; onClose: (
         </>
       }
     >
-      {!user && (
-        <>
-          <Input label="Email" type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
-          <Select
-            label="Роль"
-            value={role}
-            onChange={(v) => setRole(v as Role)}
-            options={(['manager', 'teacher', 'owner'] as Role[]).map((r) => ({ value: r, label: ROLE_LABEL[r] }))}
-          />
-          {role === 'teacher' && (
-            <Select
-              label="Преподаватель"
-              value={teacherId}
-              onChange={setTeacherId}
-              placeholder="Выберите преподавателя"
-              options={teachers.map((t) => ({ value: t.id, label: fullName(t) }))}
-              hint="Сначала добавьте его на странице «Преподаватели»"
-            />
-          )}
-        </>
+      <Input label="Email (логин)" type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={!user} />
+      <Select
+        label="Роль"
+        value={role}
+        disabled={self}
+        onChange={(v) => setRole(v as Role)}
+        options={(['owner', 'manager', 'teacher'] as Role[]).map((r) => ({ value: r, label: ROLE_LABEL[r] }))}
+        hint={self ? 'Свою роль менять нельзя' : role === 'owner' ? 'Владелец видит всё, включая зарплаты и настройки' : role === 'manager' ? 'Ученики, группы, оплаты, лиды — без зарплат и настроек' : 'Только свои группы и посещаемость'}
+      />
+      {role === 'teacher' && (
+        <Select
+          label="Преподаватель"
+          value={teacherId}
+          onChange={setTeacherId}
+          placeholder="Выберите преподавателя"
+          options={teachers.map((t) => ({ value: t.id, label: fullName(t) }))}
+          hint="Сначала добавьте его на странице «Преподаватели»"
+        />
       )}
       <Input
         label={user ? 'Новый пароль' : 'Пароль'}
@@ -85,9 +95,9 @@ function UserModal({ open, onClose, onSaved, user }: { open: boolean; onClose: (
         autoComplete="new-password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
+        placeholder={user ? 'Оставьте пустым, чтобы не менять' : ''}
         hint="Минимум 8 символов"
         error={error}
-        autoFocus={!!user}
       />
     </Modal>
   )
@@ -109,7 +119,7 @@ function UsersCard() {
     <Card>
       <CardHeader
         title="Пользователи"
-        subtitle="Кто может войти в CRM и что ему доступно"
+        subtitle="Создавайте логины и выдавайте роли: владелец, менеджер, преподаватель"
         actions={<Button size="sm" icon="userPlus" onClick={() => setCreate(true)}>Добавить</Button>}
       />
       <div className="-mx-2 flex flex-col">
@@ -120,7 +130,7 @@ function UsersCard() {
               <div className="truncate text-[13px] text-muted">{u.email}</div>
             </div>
             <Badge tone={u.role === 'owner' ? 'dark' : u.role === 'manager' ? 'soft' : 'outline'}>{ROLE_LABEL[u.role]}</Badge>
-            <IconButton icon="lock" size="sm" label="Сменить пароль" onClick={() => setEdit(u)} />
+            <IconButton icon="edit" size="sm" label="Изменить роль и доступ" onClick={() => setEdit(u)} />
             {u.id !== me.id && <IconButton icon="trash" size="sm" label="Удалить" onClick={() => setToDelete(u)} />}
           </div>
         ))}
