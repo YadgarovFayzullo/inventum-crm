@@ -1,0 +1,87 @@
+@import '@fontsource/manrope/400.css';
+@import '@fontsource/manrope/500.css';
+@import '@fontsource/manrope/600.css';
+@import '@fontsource/manrope/700.css';
+@import 'tailwindcss';
+
+/*
+  Тема строго по брендбуку: оранжевый, чёрный, белый и нейтральные серые.
+  Стандартные цвета Tailwind отключены — классы вроде bg-blue-500 не существуют.
+  Начертания: 400 текст, 500 акценты, 600/700 — только заголовки страниц и ключевые цифры.
+*/
+@theme {
+  --font-sans: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --font-weight-*: initial;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-primary: #f26a1c;
+  --color-primary-hover: #e05c10;
+  --color-primary-active: #c94f0b;
+  --color-primary-soft: #fff1e8;
+  --color-primary-soft-2: #ffe1cd;
+  --color-ink: #141414;
+  --color-ink-2: #262626;
+  --color-fg: #141414;
+  --color-muted: #6b6b6b;
+  --color-subtle: #a1a1a1;
+  --color-page: #f8f8f7; /* фон приложения — чуть светлее canvas */
+  --color-canvas: #f5f5f4;
+  --color-surface: #ffffff;
+  --color-surface-2: #fafafa;
+  --color-line: #ececec;
+  --color-line-strong: #dcdcdc;
+  /* Статусные цвета (зелёный, красный) — только для бейджей статусов */
+  --color-success: #1f9d55;
+  --color-success-soft: #e6f6ec;
+  --color-danger: #d92d20;
+  --color-danger-soft: #fdeceb;
+  --color-overlay: rgb(20 20 20 / 0.4);
+
+  --shadow-sm: 0 1px 2px rgb(20 20 20 / 0.04);
+  --shadow-md: 0 8px 24px rgb(20 20 20 / 0.08);
+  --shadow-lg: 0 24px 64px rgb(20 20 20 / 0.16);
+
+  --animate-fade: fade 0.12s ease-out;
+  --animate-rise: rise 0.16s ease-out;
+  --animate-drop: drop 0.18s ease-out;
+
+  @keyframes fade {
+    from { opacity: 0; }
+  }
+  @keyframes drop {
+    from { opacity: 0; transform: translateY(-12px); }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+  }
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+
+  body {
+    @apply bg-page text-fg font-sans text-sm antialiased;
+    font-synthesis: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1, h2, h3, h4, h5, h6, b, strong, th { font-weight: 500; }
+
+  button { cursor: pointer; }
+  ::selection { background: var(--color-primary-soft-2); }
+  :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 10px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+}
