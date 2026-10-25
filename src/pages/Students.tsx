@@ -71,7 +71,7 @@ export default function Students() {
       header: 'Ученик',
       render: (s) => (
         <div className="flex items-center gap-3">
-          <Avatar seed={s.id} name={fullName(s)} />
+          <Avatar seed={s.id} photoVersion={s.photoVersion} name={fullName(s)} />
           <div className="min-w-0">
             <div className="truncate font-medium">{fullName(s)}</div>
             <div className="text-xs text-subtle">{formatPhone(s.phone) || 'нет телефона'}</div>

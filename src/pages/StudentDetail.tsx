@@ -1,6 +1,7 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { formatDate, formatDays, today } from '@/lib/dates'
+import { prepareAvatar } from '@/lib/image'
 import { formatMoney, formatPhone, fullName, phoneHref } from '@/lib/format'
 import { AttendanceCalendar } from '@/components/AttendanceCalendar'
 import { Balance } from '@/components/Money'
@@ -45,6 +46,8 @@ export default function StudentDetail() {
 
   const [tab, setTab] = useState<'payments' | 'attendance' | 'history'>(money ? 'payments' : 'attendance')
   const [editOpen, setEditOpen] = useState(false)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
   const [payGroup, setPayGroup] = useState<string | null>(null)
   const [transferFrom, setTransferFrom] = useState<string | null>(null)
   const [enrollOpen, setEnrollOpen] = useState(false)
@@ -71,6 +74,21 @@ export default function StudentDetail() {
     list.sort((a, b) => (a.date < b.date ? 1 : -1))
     return { list, counts, total: list.length }
   }, [attendance, id])
+
+  const onPhoto = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setPhotoBusy(true)
+    try {
+      await useStore.getState().setStudentPhoto(id, await prepareAvatar(file))
+      toast('Фото обновлено')
+    } catch {
+      /* сообщение об ошибке уже показано */
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
 
   if (!student) return <EmptyState icon="user" title="Ученик не найден" action={<Button onClick={() => navigate('/students')}>К списку</Button>} />
   // Преподаватель открывает только учеников своих групп
@@ -104,7 +122,24 @@ export default function StudentDetail() {
       </Link>
 
       <div className="mb-6 flex flex-wrap items-center gap-4">
-        <Avatar seed={student.id} name={name} size={64} />
+        <div className="relative shrink-0">
+          <Avatar seed={student.id} photoVersion={student.photoVersion} name={name} size={64} />
+          {manage && (
+            <>
+              <button
+                type="button"
+                aria-label="Загрузить фото"
+                title="Загрузить фото"
+                disabled={photoBusy}
+                onClick={() => fileRef.current?.click()}
+                className="absolute -right-1 -bottom-1 inline-flex size-7 items-center justify-center rounded-full border-2 border-page bg-ink text-white transition-colors hover:bg-primary disabled:opacity-60"
+              >
+                <Icon name="edit" size={13} />
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhoto} />
+            </>
+          )}
+        </div>
         <div className="min-w-0 flex-1">
           <h1 className="text-[28px] leading-tight font-semibold tracking-tight">{name}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">

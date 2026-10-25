@@ -71,7 +71,7 @@ export default function Payments() {
         const s = studentMap.get(p.studentId)
         return s ? (
           <button type="button" onClick={() => navigate(`/students/${s.id}`)} className="flex items-center gap-2.5 text-left hover:text-primary">
-            <Avatar seed={s.id} name={fullName(s)} size={28} />
+            <Avatar seed={s.id} photoVersion={s.photoVersion} name={fullName(s)} size={28} />
             {fullName(s)}
           </button>
         ) : '—'
@@ -90,7 +90,7 @@ export default function Payments() {
       header: 'Ученик',
       render: (s) => (
         <button type="button" onClick={() => navigate(`/students/${s.id}`)} className="flex items-center gap-2.5 text-left hover:text-primary">
-          <Avatar seed={s.id} name={fullName(s)} size={32} />
+          <Avatar seed={s.id} photoVersion={s.photoVersion} name={fullName(s)} size={32} />
           <span className="font-medium">{fullName(s)}</span>
         </button>
       ),

@@ -148,7 +148,7 @@ export function AttendanceGrid({ group, month }: { group: Group; month: string }
               <tr key={r.studentId} className="group/row">
                 <td className="sticky left-0 z-10 border-t border-line bg-surface px-4 py-2 group-hover/row:bg-surface-2">
                   <Link to={`/students/${s.id}`} className="flex items-center gap-2.5 hover:text-primary">
-                    <Avatar seed={s.id} name={fullName(s)} size={28} />
+                    <Avatar seed={s.id} photoVersion={s.photoVersion} name={fullName(s)} size={28} />
                     <span className="truncate">{fullName(s)}</span>
                   </Link>
                 </td>

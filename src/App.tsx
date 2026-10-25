@@ -1,5 +1,4 @@
-import { lazy } from 'react'
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import { AppLayout } from '@/layout/AppLayout'
 import { useAccess, type Perm } from '@/store/auth'
@@ -18,6 +17,7 @@ const Teachers = lazy(() => import('@/pages/Teachers'))
 const Courses = lazy(() => import('@/pages/Courses'))
 const Settings = lazy(() => import('@/pages/Settings'))
 const UiKit = lazy(() => import('@/pages/UiKit'))
+const Login = lazy(() => import('@/pages/Login'))
 
 /** Страница доступна только при нужном праве, иначе — на главную */
 function Guard({ perm, children }: { perm: Perm; children: ReactNode }) {
@@ -26,6 +26,7 @@ function Guard({ perm, children }: { perm: Perm; children: ReactNode }) {
 }
 
 const router = createBrowserRouter([
+  { path: '/login', element: <Suspense fallback={null}><Login /></Suspense> },
   {
     element: <AppLayout />,
     children: [

@@ -174,7 +174,7 @@ export default function Dashboard() {
               <div className="flex flex-col">
                 {topDebtors.map(({ s, b }) => (
                   <Link key={s.id} to={`/students/${s.id}`} className="flex items-center gap-3 border-b border-line py-2.5 last:border-0 hover:text-primary">
-                    <Avatar seed={s.id} name={fullName(s)} size={32} />
+                    <Avatar seed={s.id} photoVersion={s.photoVersion} name={fullName(s)} size={32} />
                     <span className="min-w-0 flex-1 truncate">{fullName(s)}</span>
                     <Balance value={b} />
                   </Link>

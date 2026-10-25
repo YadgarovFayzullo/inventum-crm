@@ -60,7 +60,7 @@ export function EnrollModal({ open, onClose, groupId }: { open: boolean; onClose
               onClick={() => toggle(s.id)}
               className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-canvas"
             >
-              <Avatar seed={s.id} name={fullName(s)} size={32} />
+              <Avatar seed={s.id} photoVersion={s.photoVersion} name={fullName(s)} size={32} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{fullName(s)}</span>
                 <span className="block text-xs text-subtle">{formatPhone(s.phone)}</span>

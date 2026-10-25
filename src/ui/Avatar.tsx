@@ -50,10 +50,26 @@ type AvatarProps = {
   tone?: keyof typeof tones
   /** Если задан — рисуется аватар DiceBear (для учеников передавайте id, чтобы он не менялся при смене имени) */
   seed?: string
+  /** Версия фото ученика (>0 — фото загружено). Адрес меняется при каждой загрузке, поэтому кэшируется надолго. */
+  photoVersion?: number
 }
 
-export const Avatar = memo(function Avatar({ name, size = 36, tone = 'soft', seed }: AvatarProps) {
+export const Avatar = memo(function Avatar({ name, size = 36, tone = 'soft', seed, photoVersion }: AvatarProps) {
   const ready = useSyncExternalStore(subscribe, getReady)
+  if (seed && photoVersion) {
+    return (
+      <img
+        src={`/api/students/${seed}/photo?v=${photoVersion}`}
+        alt={name}
+        width={size}
+        height={size}
+        loading="lazy"
+        decoding="async"
+        className="shrink-0 rounded-full bg-primary-soft object-cover"
+        style={{ width: size, height: size }}
+      />
+    )
+  }
   if (seed && ready) {
     return (
       <img

@@ -15,6 +15,8 @@ export interface Student {
   status: StudentStatus
   discount: number // % скидки на все группы
   createdAt: string
+  /** 0 — фото нет; растёт при каждой загрузке и входит в адрес картинки (кэш браузера) */
+  photoVersion?: number
 }
 
 export interface Course {

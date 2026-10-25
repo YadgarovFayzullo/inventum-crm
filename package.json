@@ -4,25 +4,41 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "dev": "concurrently -k -n web,api -c cyan,magenta \"vite\" \"tsx watch --env-file-if-exists=.env server/index.ts\"",
+    "dev:web": "vite",
+    "dev:api": "tsx watch --env-file-if-exists=.env server/index.ts",
+    "build": "tsc -b && vite build && npm run build:server",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --target=node24 --outfile=dist-server/index.js",
+    "start": "node --env-file-if-exists=.env dist-server/index.js",
+    "typecheck:server": "tsc -p tsconfig.server.json",
+    "test:server": "NODE_ENV=test tsx --test server/*.test.ts"
   },
   "dependencies": {
     "@dicebear/core": "^9.4.3",
     "@dicebear/notionists": "^9.4.2",
+    "@fastify/compress": "^9.2.2",
+    "@fastify/cookie": "^11.1.3",
+    "@fastify/static": "^10.1.7",
     "@fontsource/manrope": "^5.3.0",
+    "aws4fetch": "^1.0.20",
+    "fastify": "^5.12.7",
+    "postgres": "^3.4.9",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.4",
+    "zod": "^4.6.7",
     "zustand": "^5.0.16"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.2.0",
+    "concurrently": "^10.0.6",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^7.3.7"
   }

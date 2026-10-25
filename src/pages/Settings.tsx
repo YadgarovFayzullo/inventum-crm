@@ -1,11 +1,148 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { ApiError, api } from '@/lib/api'
 import { today } from '@/lib/dates'
+import { fullName } from '@/lib/format'
+import { ROLE_LABEL, useSession, type Role } from '@/store/auth'
 import { useStore, type Data } from '@/store/store'
-import { Button, Card, CardHeader, ConfirmDialog, Input, PageHeader, toast } from '@/ui'
+import { Badge, Button, Card, CardHeader, ConfirmDialog, IconButton, Input, Modal, PageHeader, Select, toast } from '@/ui'
+
+type UserRow = { id: string; email: string; role: Role; name: string; teacherId: string }
+
+function UserModal({ open, onClose, onSaved, user }: { open: boolean; onClose: () => void; onSaved: () => void; user: UserRow | null }) {
+  const teachers = useStore((s) => s.teachers)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState<Role>('manager')
+  const [teacherId, setTeacherId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setEmail(user?.email ?? '')
+    setPassword('')
+    setRole(user?.role ?? 'manager')
+    setTeacherId(user?.teacherId ?? '')
+    setError('')
+  }, [open, user])
+
+  const valid = password.length >= 8 && (user || (email.trim() && (role !== 'teacher' || teacherId)))
+
+  const submit = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      if (user) await api.patch(`/users/${user.id}`, { password })
+      else await api.post('/users', { email, password, role, teacherId: role === 'teacher' ? teacherId : undefined })
+      toast(user ? 'Пароль изменён' : 'Пользователь создан')
+      onSaved()
+      onClose()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось сохранить')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={user ? 'Сменить пароль' : 'Новый пользователь'}
+      description={user?.email}
+      width={460}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Отмена</Button>
+          <Button disabled={!valid || busy} onClick={submit}>Сохранить</Button>
+        </>
+      }
+    >
+      {!user && (
+        <>
+          <Input label="Email" type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+          <Select
+            label="Роль"
+            value={role}
+            onChange={(v) => setRole(v as Role)}
+            options={(['manager', 'teacher', 'owner'] as Role[]).map((r) => ({ value: r, label: ROLE_LABEL[r] }))}
+          />
+          {role === 'teacher' && (
+            <Select
+              label="Преподаватель"
+              value={teacherId}
+              onChange={setTeacherId}
+              placeholder="Выберите преподавателя"
+              options={teachers.map((t) => ({ value: t.id, label: fullName(t) }))}
+              hint="Сначала добавьте его на странице «Преподаватели»"
+            />
+          )}
+        </>
+      )}
+      <Input
+        label={user ? 'Новый пароль' : 'Пароль'}
+        type="password"
+        autoComplete="new-password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        hint="Минимум 8 символов"
+        error={error}
+        autoFocus={!!user}
+      />
+    </Modal>
+  )
+}
+
+function UsersCard() {
+  const me = useSession((s) => s.user)!
+  const [users, setUsers] = useState<UserRow[] | null>(null)
+  const [edit, setEdit] = useState<UserRow | null>(null)
+  const [create, setCreate] = useState(false)
+  const [toDelete, setToDelete] = useState<UserRow | null>(null)
+
+  const reload = useCallback(() => {
+    api.get<UserRow[]>('/users').then(setUsers).catch(() => toast('Не удалось загрузить пользователей', 'error'))
+  }, [])
+  useEffect(reload, [reload])
+
+  return (
+    <Card>
+      <CardHeader
+        title="Пользователи"
+        subtitle="Кто может войти в CRM и что ему доступно"
+        actions={<Button size="sm" icon="userPlus" onClick={() => setCreate(true)}>Добавить</Button>}
+      />
+      <div className="-mx-2 flex flex-col">
+        {users?.map((u) => (
+          <div key={u.id} className="flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-surface-2">
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium">{u.name}{u.id === me.id && <span className="font-normal text-subtle"> · это вы</span>}</div>
+              <div className="truncate text-[13px] text-muted">{u.email}</div>
+            </div>
+            <Badge tone={u.role === 'owner' ? 'dark' : u.role === 'manager' ? 'soft' : 'outline'}>{ROLE_LABEL[u.role]}</Badge>
+            <IconButton icon="lock" size="sm" label="Сменить пароль" onClick={() => setEdit(u)} />
+            {u.id !== me.id && <IconButton icon="trash" size="sm" label="Удалить" onClick={() => setToDelete(u)} />}
+          </div>
+        ))}
+        {users === null && <p className="py-4 text-center text-muted">Загрузка…</p>}
+      </div>
+      <UserModal open={create || !!edit} user={edit} onClose={() => { setCreate(false); setEdit(null) }} onSaved={reload} />
+      <ConfirmDialog
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        title="Удалить пользователя?"
+        text={toDelete ? `${toDelete.email} больше не сможет войти.` : undefined}
+        onConfirm={() => {
+          api.del(`/users/${toDelete!.id}`).then(() => { toast('Пользователь удалён'); reload() }).catch((e) => toast(e instanceof ApiError ? e.message : 'Ошибка', 'error'))
+        }}
+      />
+    </Card>
+  )
+}
 
 export default function Settings() {
   const settings = useStore((s) => s.settings)
-  const { updateSettings, resetDemo, clearAll } = useStore.getState()
+  const { updateSettings, resetDemo, clearAll, importData } = useStore.getState()
   const [name, setName] = useState(settings.centerName)
   const [confirm, setConfirm] = useState<'demo' | 'clear' | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -23,17 +160,17 @@ export default function Settings() {
 
   const importJson = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
+    e.target.value = ''
     if (!file) return
     try {
-      const data = JSON.parse(await file.text()) as Data
-      if (!Array.isArray(data.students) || !Array.isArray(data.groups)) throw new Error('bad file')
-      useStore.setState(data)
+      await importData(JSON.parse(await file.text()) as Data)
       toast('Данные восстановлены')
-    } catch {
-      toast('Не удалось прочитать файл', 'error')
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Не удалось прочитать файл', 'error')
     }
-    e.target.value = ''
   }
+
+  const run = (fn: () => Promise<void>) => fn().then(() => toast('Готово')).catch((err) => toast(err instanceof ApiError ? err.message : 'Ошибка', 'error'))
 
   return (
     <>
@@ -46,8 +183,9 @@ export default function Settings() {
             <Button disabled={!name.trim() || name === settings.centerName} onClick={() => { updateSettings({ centerName: name.trim() }); toast('Сохранено') }}>Сохранить</Button>
           </div>
         </Card>
+        <UsersCard />
         <Card>
-          <CardHeader title="Резервная копия" subtitle="Данные хранятся в браузере. Регулярно скачивайте копию." />
+          <CardHeader title="Резервная копия" subtitle="Скачайте копию данных в файл или восстановите из файла. Фотографии учеников в копию не входят." />
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" icon="download" onClick={exportJson}>Скачать копию</Button>
             <Button variant="secondary" onClick={() => fileRef.current?.click()}>Восстановить из файла</Button>
@@ -66,9 +204,9 @@ export default function Settings() {
         open={confirm !== null}
         onClose={() => setConfirm(null)}
         title={confirm === 'demo' ? 'Заменить данные демо-набором?' : 'Удалить все данные?'}
-        text="Текущие данные будут потеряны. Сначала скачайте резервную копию."
+        text="Все ученики, группы, оплаты и посещаемость на сервере будут заменены. Сначала скачайте резервную копию. Пользователи (логины) сохранятся."
         confirmLabel={confirm === 'demo' ? 'Загрузить' : 'Очистить'}
-        onConfirm={() => { if (confirm === 'demo') resetDemo(); else clearAll(); toast('Готово') }}
+        onConfirm={() => run(confirm === 'demo' ? resetDemo : clearAll)}
       />
     </>
   )

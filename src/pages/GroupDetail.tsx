@@ -72,7 +72,7 @@ export default function GroupDetail() {
         const s = studentMap.get(e.studentId)!
         return (
           <Link to={`/students/${s.id}`} className="flex items-center gap-3 hover:text-primary">
-            <Avatar seed={s.id} name={fullName(s)} size={32} />
+            <Avatar seed={s.id} photoVersion={s.photoVersion} name={fullName(s)} size={32} />
             <div className="min-w-0">
               <div className="truncate font-medium">{fullName(s)}</div>
               <div className="text-xs text-subtle">в группе с {formatDate(e.startDate)}</div>

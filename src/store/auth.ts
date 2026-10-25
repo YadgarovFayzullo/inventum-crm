@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { api, setUnauthorizedHandler } from '@/lib/api'
 import type { Group } from './types'
 
 export type Role = 'owner' | 'manager' | 'teacher'
@@ -35,35 +35,58 @@ const PERMS: Record<Role, Perm[]> = {
   owner: [...MANAGER, 'teachers.manage', 'courses', 'settings', 'uikit', 'funnel'],
 }
 
+export type User = { id: string; email: string; role: Role; name: string; teacherId: string }
+
 type Session = {
-  role: Role
-  /** Какой преподаватель вошёл (для роли teacher) */
-  teacherId: string
-  setSession: (role: Role, teacherId?: string) => void
+  user: User | null
+  /** true, когда проверка текущей сессии на сервере завершена */
+  ready: boolean
+  init: () => Promise<void>
+  /** Бросает ApiError при неверном пароле */
+  login: (email: string, password: string, remember: boolean) => Promise<void>
+  logout: () => Promise<void>
 }
 
-export const useSession = create<Session>()(
-  persist(
-    (set) => ({
-      role: 'owner',
-      teacherId: 't-1',
-      setSession: (role, teacherId) => set((s) => ({ role, teacherId: teacherId ?? s.teacherId })),
-    }),
-    { name: 'inventum-session', version: 1 },
-  ),
-)
+export const useSession = create<Session>()((set) => ({
+  user: null,
+  ready: false,
+  init: async () => {
+    try {
+      const { user } = await api.get<{ user: User | null }>('/auth/me')
+      set({ user, ready: true })
+    } catch {
+      set({ user: null, ready: true })
+    }
+  },
+  login: async (email, password, remember) => {
+    const user = await api.post<User>('/auth/login', { email, password, remember })
+    set({ user })
+  },
+  logout: async () => {
+    try {
+      await api.post('/auth/logout')
+    } catch {
+      /* всё равно выходим локально */
+    }
+    set({ user: null })
+  },
+}))
+
+// Сессия истекла на сервере — возвращаем на страницу входа
+setUnauthorizedHandler(() => useSession.setState({ user: null }))
 
 export function useAccess() {
-  const role = useSession((s) => s.role)
-  const teacherId = useSession((s) => s.teacherId)
+  const user = useSession((s) => s.user)
+  const role: Role = user?.role ?? 'teacher'
+  const teacherId = user?.teacherId ?? ''
   return useMemo(
     () => ({
       role,
       teacherId,
-      can: (p: Perm) => PERMS[role].includes(p),
+      can: (p: Perm) => !!user && PERMS[role].includes(p),
       /** Группа доступна: менеджеру и владельцу — любая, преподавателю — только своя */
       ownsGroup: (g: Pick<Group, 'teacherId'>) => role !== 'teacher' || g.teacherId === teacherId,
     }),
-    [role, teacherId],
+    [user, role, teacherId],
   )
 }

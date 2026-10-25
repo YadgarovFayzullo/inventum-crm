@@ -1,9 +1,9 @@
-import { Suspense, useEffect, useMemo, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Suspense, useEffect, useState } from 'react'
+import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/cn'
 import { fullName } from '@/lib/format'
-import { Icon, IconButton, Menu, type IconName, type MenuItem } from '@/ui'
-import { ROLE_LABEL, useAccess, useSession, type Perm, type Role } from '@/store/auth'
+import { Icon, IconButton, type IconName } from '@/ui'
+import { ROLE_LABEL, useAccess, useSession, type Perm } from '@/store/auth'
 import { useStore } from '@/store/store'
 
 type NavDef = { to: string; label: string; icon: IconName; perm?: Perm }
@@ -24,53 +24,33 @@ const NAV_BOTTOM: NavDef[] = [
   { to: '/settings', label: 'Настройки', icon: 'gear', perm: 'settings' },
 ]
 
-/** Переключатель роли. Это демо без входа по паролю — настоящую защиту даст бэкенд с авторизацией. */
-function RoleSwitcher() {
-  const { role, teacherId } = useAccess()
+/** Текущий аккаунт и выход */
+function AccountCard() {
+  const user = useSession((s) => s.user)!
   const teachers = useStore((s) => s.teachers)
-  const setSession = useSession((s) => s.setSession)
-  const navigate = useNavigate()
-  const [anchor, setAnchor] = useState<DOMRect | null>(null)
-
-  const teacher = teachers.find((t) => t.id === teacherId)
-  const who = role === 'teacher' && teacher ? fullName(teacher) : ROLE_LABEL[role]
-
-  const items = useMemo<MenuItem[]>(() => {
-    const go = (r: Role, tid?: string) => () => {
-      setSession(r, tid)
-      navigate('/')
-    }
-    return [
-      { key: 'owner', label: ROLE_LABEL.owner, active: role === 'owner', onSelect: go('owner') },
-      { key: 'manager', label: ROLE_LABEL.manager, active: role === 'manager', onSelect: go('manager') },
-      ...teachers.map((t, i) => ({
-        key: t.id,
-        label: `Преподаватель · ${t.firstName}`,
-        divider: i === 0,
-        active: role === 'teacher' && teacherId === t.id,
-        onSelect: go('teacher', t.id),
-      })),
-    ]
-  }, [role, teacherId, teachers, setSession, navigate])
-
+  const logout = useSession((s) => s.logout)
+  const teacher = user.role === 'teacher' ? teachers.find((t) => t.id === user.teacherId) : undefined
+  // у владельца и менеджера имени нет — показываем email, чтобы не дублировать роль
+  const name = teacher ? fullName(teacher) : user.email
   return (
-    <>
+    <div className="flex items-center gap-3 rounded-xl bg-white/6 px-3 py-2.5">
+      <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-white">
+        <Icon name={user.role === 'teacher' ? 'graduation' : 'user'} size={16} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] text-white">{name}</span>
+        <span className="block text-[11px] text-white/50">{ROLE_LABEL[user.role]}</span>
+      </span>
       <button
         type="button"
-        onClick={(e) => setAnchor(e.currentTarget.getBoundingClientRect())}
-        className="flex w-full items-center gap-3 rounded-xl bg-white/6 px-3 py-2.5 text-left transition-colors hover:bg-white/10"
+        aria-label="Выйти"
+        title="Выйти"
+        onClick={() => void logout()}
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white"
       >
-        <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-white">
-          <Icon name={role === 'teacher' ? 'graduation' : 'user'} size={16} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] text-white">{who}</span>
-          <span className="block text-[11px] text-white/50">{role === 'teacher' ? ROLE_LABEL.teacher : 'Сменить роль'}</span>
-        </span>
-        <Icon name="chevronDown" size={14} className="text-white/50" />
+        <Icon name="logout" size={17} />
       </button>
-      <Menu anchor={anchor} items={items} onClose={() => setAnchor(null)} title="Войти как (демо)" width={250} />
-    </>
+    </div>
   )
 }
 
@@ -112,10 +92,33 @@ export function AppLayout() {
   const { pathname } = useLocation()
   const centerName = useStore((s) => s.settings.centerName)
   const { can } = useAccess()
+  const user = useSession((s) => s.user)
+  const loaded = useStore((s) => s.loaded)
+  const [loadError, setLoadError] = useState(false)
+  // После входа тянем данные с сервера один раз; при выходе очищаем всё, чтобы следующий пользователь не увидел чужое
+  useEffect(() => {
+    if (!user) {
+      useStore.getState().reset()
+      return
+    }
+    setLoadError(false)
+    useStore.getState().load().catch(() => setLoadError(true))
+  }, [user])
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [pathname])
   const close = () => setOpen(false)
+  if (!user) return <Navigate to="/login" replace />
+  if (loadError) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 text-center">
+        <p className="text-lg font-medium">Не удалось загрузить данные</p>
+        <p className="text-muted">Проверьте соединение с сервером.</p>
+        <button type="button" className="rounded-full bg-primary px-5 py-2.5 font-medium text-white" onClick={() => window.location.reload()}>Повторить</button>
+      </div>
+    )
+  }
+  if (!loaded) return <div className="flex min-h-screen items-center justify-center"><span className="size-8 animate-spin rounded-full border-2 border-line-strong border-t-primary" /></div>
 
   return (
     <div className="min-h-full lg:pl-62">
@@ -131,7 +134,7 @@ export function AppLayout() {
         </nav>
         <div className="mt-auto flex flex-col gap-1 border-t border-white/10 pt-4">
           {NAV_BOTTOM.filter((n) => !n.perm || can(n.perm)).map(({ perm: _p, ...n }) => <NavItem key={n.to} {...n} onClick={close} />)}
-          <div className="mt-2"><RoleSwitcher /></div>
+          <div className="mt-2"><AccountCard /></div>
         </div>
       </aside>
       {open && <div className="fixed inset-0 z-40 bg-overlay lg:hidden" onClick={close} />}
