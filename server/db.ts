@@ -117,6 +117,20 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX finance_entries_date ON finance_entries(date DESC);
   `,
+  `
+  CREATE TABLE recurring_expenses (
+    id text PRIMARY KEY,
+    category text NOT NULL,
+    description text NOT NULL,
+    amount bigint NOT NULL CHECK (amount > 0),
+    day int NOT NULL CHECK (day BETWEEN 1 AND 31),
+    start_month text NOT NULL CHECK (start_month ~ '^[0-9]{4}-[0-9]{2}$'),
+    end_month text CHECK (end_month IS NULL OR end_month ~ '^[0-9]{4}-[0-9]{2}$'),
+    seq bigserial
+  );
+  ALTER TABLE finance_entries ADD COLUMN recurring_id text;
+  CREATE INDEX finance_entries_recurring ON finance_entries(recurring_id) WHERE recurring_id IS NOT NULL;
+  `,
 ]
 
 export async function migrate(sql: Sql) {

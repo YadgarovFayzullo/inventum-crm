@@ -117,4 +117,25 @@ export interface FinanceEntry {
   /** Почему доход или расход: у ручных записей обязателен */
   description: string
   method?: PaymentMethod
+  /** Если запись внесена из регулярного расхода */
+  recurringId?: ID
+}
+
+/** Регулярный расход: повторяется каждый месяц с startMonth по endMonth (без endMonth — бессрочно) */
+export interface RecurringExpense {
+  id: ID
+  category: string
+  description: string
+  amount: number
+  /** День месяца (в коротких месяцах — последний день) */
+  day: number
+  startMonth: string
+  endMonth?: string
+}
+
+export interface MonthlyFinance {
+  month: string
+  income: number
+  expense: number
+  planned: number
 }

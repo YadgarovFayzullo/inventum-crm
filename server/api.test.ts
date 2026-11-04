@@ -305,6 +305,22 @@ describe('API', () => {
     assert.ok(paid >= 450000)
     assert.equal(sum('income'), paid + 300000)
     assert.equal(sum('expense'), 1200000)
+    // регулярные расходы: план по месяцам и внесение в журнал
+    const rec = { id: 'r1', category: 'Аренда', description: 'Аренда помещения по договору №12', amount: 5000000, day: 5, startMonth: '2026-10', endMonth: '2026-11' }
+    assert.equal((await call(manager, 'POST', '/api/finance/recurring', rec)).status, 403)
+    assert.equal((await call(acc, 'POST', '/api/finance/recurring', { ...rec, amount: 0 })).status, 400)
+    assert.equal((await call(acc, 'POST', '/api/finance/recurring', { ...rec, endMonth: '2026-09' })).status, 400)
+    assert.equal((await call(acc, 'POST', '/api/finance/recurring', rec)).status, 200)
+    assert.equal((await call(acc, 'GET', '/api/finance/recurring')).body.items[0].amount, 5000000)
+    const mon = (await call(acc, 'GET', '/api/finance/monthly?from=2026-09&months=4')).body.months
+    assert.deepEqual(mon.map((m: any) => m.planned), [0, 5000000, 5000000, 0])
+    assert.equal((await call(acc, 'POST', '/api/finance/entries', { id: 'f3', kind: 'expense', amount: 5000000, date: d(5), category: 'Аренда', description: 'Аренда (октябрь)', recurringId: 'r1' })).status, 200)
+    assert.equal((await call(acc, 'GET', `/api/finance?from=${d(1)}&to=${d(30)}`)).body.entries.find((e: any) => e.id === 'f3').recurringId, 'r1')
+    assert.equal((await call(acc, 'PATCH', '/api/finance/recurring/r1', { endMonth: null })).status, 200)
+    assert.equal((await call(acc, 'GET', '/api/finance/monthly?from=2026-12&months=1')).body.months[0].planned, 5000000)
+    assert.equal((await call(acc, 'DELETE', '/api/finance/recurring/r1')).status, 200)
+    assert.equal((await call(acc, 'DELETE', '/api/finance/entries/f3')).status, 200)
+
     // период ограничивает выборку
     assert.equal((await call(acc, 'GET', `/api/finance?from=${d(10)}&to=${d(30)}`)).body.entries.length, 0)
 

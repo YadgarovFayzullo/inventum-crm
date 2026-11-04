@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '@/lib/api'
 import { downloadCsv } from '@/lib/csv'
-import { currentMonth, formatDate, formatMonth, monthEnd, monthStart } from '@/lib/dates'
+import { addMonths, currentMonth, daysInMonth, formatDate, formatMonth, monthEnd, monthStart } from '@/lib/dates'
 import { formatMoney } from '@/lib/format'
+import { BarChart, DonutChart } from '@/components/charts'
 import { FinanceEntryModal } from '@/components/FinanceEntryModal'
 import { MonthSwitcher } from '@/components/MonthSwitcher'
+import { RecurringModal } from '@/components/RecurringModal'
+import { uid } from '@/lib/id'
 import { PAYMENT_METHOD } from '@/store/labels'
-import type { FinanceEntry, FinanceKind } from '@/store/types'
+import type { FinanceEntry, FinanceKind, MonthlyFinance, RecurringExpense } from '@/store/types'
 import { Badge, Button, Card, CardHeader, ConfirmDialog, EmptyState, IconButton, Input, PageHeader, StatCard, Table, Tabs, toast, type Column } from '@/ui'
 
 type Filter = 'all' | FinanceKind
@@ -46,12 +49,22 @@ export default function Finance() {
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState<FinanceEntry | null | undefined>(undefined) // undefined — закрыто, null — новая запись
   const [toDelete, setToDelete] = useState<FinanceEntry | null>(null)
+  const [recurring, setRecurring] = useState<RecurringExpense[]>([])
+  const [monthly, setMonthly] = useState<MonthlyFinance[]>([])
+  const [editingRec, setEditingRec] = useState<RecurringExpense | null | undefined>(undefined)
+  const [recToDelete, setRecToDelete] = useState<RecurringExpense | null>(null)
 
   const load = useCallback(async () => {
     setFailed(false)
     try {
       const r = await api.get<{ entries: FinanceEntry[] }>(`/finance?from=${monthStart(month)}&to=${monthEnd(month)}`)
       setEntries(r.entries)
+      const [rec, mon] = await Promise.all([
+        api.get<{ items: RecurringExpense[] }>('/finance/recurring'),
+        api.get<{ months: MonthlyFinance[] }>(`/finance/monthly?from=${addMonths(month, -2)}&months=6`),
+      ])
+      setRecurring(rec.items)
+      setMonthly(mon.months)
     } catch {
       setFailed(true)
     } finally {
@@ -73,6 +86,27 @@ export default function Finance() {
     const expense = entries.reduce((a, e) => a + (e.kind === 'expense' ? e.amount : 0), 0)
     return { income, expense, profit: income - expense, incomeRows: byCat('income'), expenseRows: byCat('expense') }
   }, [entries])
+
+  // План месяца: регулярные расходы, действующие в выбранном месяце, и отметка «внесено» по записям журнала
+  const plan = useMemo(() => {
+    const items = recurring
+      .filter((r) => r.startMonth <= month && (!r.endMonth || r.endMonth >= month))
+      .map((r) => ({ item: r, entry: entries.find((e) => e.recurringId === r.id) }))
+    const total = items.reduce((a, x) => a + x.item.amount, 0)
+    const done = items.reduce((a, x) => a + (x.entry ? x.item.amount : 0), 0)
+    return { items, total, left: total - done }
+  }, [recurring, entries, month])
+
+  const post = async (r: RecurringExpense) => {
+    try {
+      const date = `${month}-${String(Math.min(r.day, daysInMonth(month))).padStart(2, '0')}`
+      await api.post('/finance/entries', { id: uid(), kind: 'expense', amount: r.amount, date, category: r.category, description: `${r.description} (${formatMonth(month)})`, recurringId: r.id })
+      toast('Расход внесён в журнал')
+      void load()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Не удалось внести')
+    }
+  }
 
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase()
@@ -142,11 +176,54 @@ export default function Finance() {
         <Card><EmptyState icon="info" title="Не удалось загрузить данные" action={<Button onClick={() => void load()}>Повторить</Button>} /></Card>
       ) : (
         <>
-          <div className="mb-4 grid gap-4 sm:grid-cols-3">
+          <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard icon="coins" label={`Доходы · ${formatMonth(month)}`} value={formatMoney(report.income)} hint={`${entries.filter((e) => e.kind === 'income').length} записей`} />
             <StatCard icon="wallet" label="Расходы" value={formatMoney(report.expense)} hint={`${entries.filter((e) => e.kind === 'expense').length} записей`} />
             <StatCard accent icon="chart" label={report.profit >= 0 ? 'Прибыль' : 'Убыток'} value={formatMoney(report.profit)} hint={report.income ? `Рентабельность ${Math.round((report.profit / report.income) * 100)}%` : undefined} />
+            <StatCard icon="calendar" label="К оплате по плану" value={formatMoney(plan.left)} hint={`из ${formatMoney(plan.total)} регулярных`} />
           </div>
+
+          <div className="mb-4 grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader title="Динамика по месяцам" subtitle="Факт и план регулярных расходов" />
+              <BarChart
+                groups={monthly.map((m) => ({ label: formatMonth(m.month).slice(0, 3), highlight: m.month === month, values: [m.income, m.expense, m.planned] }))}
+                series={[{ name: 'Доходы', className: 'fill-success' }, { name: 'Расходы (факт)', className: 'fill-danger' }, { name: 'План регулярных', className: 'fill-primary' }]}
+              />
+            </Card>
+            <Card>
+              <CardHeader title="Структура расходов" subtitle={formatMonth(month)} />
+              <DonutChart slices={report.expenseRows.map(([label, value]) => ({ label, value }))} />
+            </Card>
+          </div>
+
+          <Card className="mb-4">
+            <CardHeader
+              title="Регулярные расходы"
+              subtitle="Аренда, абонплата, подписки — повторяются каждый месяц"
+              actions={<Button size="sm" icon="plus" onClick={() => setEditingRec(null)}>Добавить</Button>}
+            />
+            {plan.items.length === 0 ? (
+              <p className="text-muted">На {formatMonth(month)} регулярных расходов нет. Добавьте аренду или абонплату — план по месяцам посчитается сам.</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {plan.items.map(({ item, entry }) => (
+                  <li key={item.id} className="flex flex-wrap items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                    <div className="min-w-48 flex-1">
+                      <div className="text-[14px] font-medium">{item.description}</div>
+                      <div className="text-xs text-muted">{item.category} · {item.day}-го числа{item.endMonth ? ` · до ${formatMonth(item.endMonth)}` : ''}</div>
+                    </div>
+                    <span className="font-medium whitespace-nowrap">{formatMoney(item.amount)}</span>
+                    {entry ? <Badge tone="green">Внесено</Badge> : <Button size="sm" variant="secondary" icon="check" onClick={() => void post(item)}>Внести</Button>}
+                    <div className="flex">
+                      <IconButton icon="edit" size="sm" label="Изменить" onClick={() => setEditingRec(item)} />
+                      <IconButton icon="trash" size="sm" label="Удалить" onClick={() => setRecToDelete(item)} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
 
           <div className="mb-4 grid gap-4 lg:grid-cols-2">
             <Breakdown title="Откуда доходы" rows={report.incomeRows} total={report.income} tone="green" />
@@ -160,6 +237,22 @@ export default function Finance() {
       )}
 
       <FinanceEntryModal open={editing !== undefined} onClose={() => setEditing(undefined)} entry={editing ?? undefined} onSaved={() => void load()} />
+      <RecurringModal open={editingRec !== undefined} onClose={() => setEditingRec(undefined)} item={editingRec ?? undefined} onSaved={() => void load()} />
+      <ConfirmDialog
+        open={recToDelete !== null}
+        onClose={() => setRecToDelete(null)}
+        title="Удалить регулярный расход?"
+        text="Из плана он пропадёт за все месяцы. Уже внесённые записи в журнале останутся."
+        onConfirm={async () => {
+          try {
+            await api.del(`/finance/recurring/${recToDelete!.id}`)
+            toast('Расход удалён')
+            void load()
+          } catch {
+            toast('Не удалось удалить')
+          }
+        }}
+      />
       <ConfirmDialog
         open={toDelete !== null}
         onClose={() => setToDelete(null)}

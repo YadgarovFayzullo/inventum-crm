@@ -3,6 +3,7 @@ import { z } from 'zod'
 export const id = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/)
 export const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const phone = z.string().regex(/^\d{0,9}$/)
+const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
 const time = z.string().regex(/^\d{2}:\d{2}$/)
 const money = z.number().int().min(0).max(100_000_000_000)
 
@@ -100,8 +101,28 @@ export const financeEntry = z.object({
   category: z.string().trim().min(1).max(60),
   description: z.string().trim().min(3, 'Опишите, почему этот доход или расход').max(500),
   method: method.optional(),
+  recurringId: id.optional(),
 })
-export const financeEntryPatch = financeEntry.omit({ id: true }).partial()
+export const financeEntryPatch = financeEntry.omit({ id: true, recurringId: true }).partial()
+
+/** Регулярный расход (аренда, абонплата…): повторяется каждый месяц с startMonth по endMonth (или бессрочно) */
+export const recurringExpense = z.object({
+  id,
+  category: z.string().trim().min(1).max(60),
+  description: z.string().trim().min(3, 'Опишите расход').max(500),
+  amount: money.refine((n) => n > 0),
+  day: z.number().int().min(1).max(31),
+  startMonth: month,
+  endMonth: month.nullable().optional(),
+}).refine((r) => !r.endMonth || r.endMonth >= r.startMonth, { message: 'Конец раньше начала' })
+export const recurringPatch = z.object({
+  category: z.string().trim().min(1).max(60),
+  description: z.string().trim().min(3).max(500),
+  amount: money.refine((n) => n > 0),
+  day: z.number().int().min(1).max(31),
+  startMonth: month,
+  endMonth: month.nullable(),
+}).partial()
 
 export const importData = z.object({
   students: z.array(student),

@@ -6,7 +6,8 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { z, ZodError } from 'zod'
-import type { Course, Enrollment, FinanceEntry, Group, Lead, Payment, Student, Teacher, Transfer } from '../src/store/types'
+import { addMonths, monthEnd, monthStart } from '../src/lib/dates'
+import type { Course, Enrollment, FinanceEntry, Group, Lead, Payment, RecurringExpense, Student, Teacher, Transfer } from '../src/store/types'
 import type { Sql } from './db'
 import * as S from './schemas'
 import {
@@ -429,7 +430,7 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
   /* ---------------- финансы: бухгалтер и владелец ---------------- */
   const toEntry = (r: Row): FinanceEntry => ({
     id: r.id, kind: r.kind, source: 'manual', amount: r.amount, date: r.date, category: r.category,
-    description: r.description, method: r.method ?? undefined,
+    description: r.description, method: r.method ?? undefined, recurringId: r.recurring_id ?? undefined,
   })
 
   // Журнал за период: ручные записи + оплаты учеников (они всегда доход «Оплата обучения»)
@@ -453,8 +454,8 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
 
   app.post('/api/finance/entries', { preHandler: finance }, async (req) => {
     const e = S.financeEntry.parse(req.body)
-    await sql`INSERT INTO finance_entries (id, kind, amount, date, category, description, method, created_by)
-      VALUES (${e.id}, ${e.kind}, ${e.amount}, ${e.date}, ${e.category}, ${e.description}, ${e.method ?? null}, ${req.user!.id})`
+    await sql`INSERT INTO finance_entries (id, kind, amount, date, category, description, method, created_by, recurring_id)
+      VALUES (${e.id}, ${e.kind}, ${e.amount}, ${e.date}, ${e.category}, ${e.description}, ${e.method ?? null}, ${req.user!.id}, ${e.recurringId ?? null})`
     return ok
   })
   app.patch('/api/finance/entries/:id', { preHandler: finance }, async (req, reply) => {
@@ -469,6 +470,57 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
   app.delete('/api/finance/entries/:id', { preHandler: finance }, async (req) => {
     await sql`DELETE FROM finance_entries WHERE id = ${idParam.parse(req.params).id}`
     return ok
+  })
+
+  /* регулярные расходы и помесячная сводка */
+  const toRecurring = (r: Row): RecurringExpense => ({
+    id: r.id, category: r.category, description: r.description, amount: r.amount, day: r.day,
+    startMonth: r.start_month, endMonth: r.end_month ?? undefined,
+  })
+  const recurringCols = { category: 'category', description: 'description', amount: 'amount', day: 'day', startMonth: 'start_month', endMonth: 'end_month' }
+
+  app.get('/api/finance/recurring', { preHandler: finance }, async () => ({
+    items: (await sql`SELECT * FROM recurring_expenses ORDER BY seq`).map(toRecurring),
+  }))
+  app.post('/api/finance/recurring', { preHandler: finance }, async (req) => {
+    const r = S.recurringExpense.parse(req.body)
+    await sql`INSERT INTO recurring_expenses (id, category, description, amount, day, start_month, end_month)
+      VALUES (${r.id}, ${r.category}, ${r.description}, ${r.amount}, ${r.day}, ${r.startMonth}, ${r.endMonth ?? null})`
+    return ok
+  })
+  app.patch('/api/finance/recurring/:id', { preHandler: finance }, async (req, reply) => {
+    const { id } = idParam.parse(req.params)
+    const cols = toColumns(S.recurringPatch.parse(req.body), recurringCols)
+    if (Object.keys(cols).length) {
+      const r = await sql`UPDATE recurring_expenses SET ${sql(cols)} WHERE id = ${id}`
+      if (r.count === 0) return reply.code(404).send({ error: 'Расход не найден' })
+    }
+    return ok
+  })
+  app.delete('/api/finance/recurring/:id', { preHandler: finance }, async (req) => {
+    await sql`DELETE FROM recurring_expenses WHERE id = ${idParam.parse(req.params).id}`
+    return ok
+  })
+
+  // Сводка по месяцам: факт доходов/расходов и план регулярных расходов
+  app.get('/api/finance/monthly', { preHandler: finance }, async (req) => {
+    const { from, months } = z.object({ from: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/), months: z.coerce.number().int().min(1).max(24) }).parse(req.query)
+    const list = Array.from({ length: months }, (_, i) => addMonths(from, i))
+    const a = monthStart(list[0]!)
+    const b = monthEnd(list[list.length - 1]!)
+    const [manual, paid, rec] = await Promise.all([
+      sql`SELECT to_char(date, 'YYYY-MM') AS m, kind, sum(amount)::bigint AS total FROM finance_entries WHERE date BETWEEN ${a} AND ${b} GROUP BY 1, 2`,
+      sql`SELECT to_char(date, 'YYYY-MM') AS m, sum(amount)::bigint AS total FROM payments WHERE date BETWEEN ${a} AND ${b} GROUP BY 1`,
+      sql`SELECT amount, start_month, end_month FROM recurring_expenses`,
+    ])
+    return {
+      months: list.map((m) => ({
+        month: m,
+        income: paid.filter((r) => r.m === m).reduce((x, r) => x + r.total, 0) + manual.filter((r) => r.m === m && r.kind === 'income').reduce((x, r) => x + r.total, 0),
+        expense: manual.filter((r) => r.m === m && r.kind === 'expense').reduce((x, r) => x + r.total, 0),
+        planned: rec.filter((r) => r.start_month <= m && (!r.end_month || r.end_month >= m)).reduce((x, r) => x + r.amount, 0),
+      })),
+    }
   })
 
   /* ---------------- настройки, импорт, пользователи (владелец) ---------------- */
