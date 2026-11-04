@@ -9,11 +9,12 @@ import { useStore } from '@/store/store'
 type NavDef = { to: string; label: string; icon: IconName; perm?: Perm }
 
 const NAV: NavDef[] = [
-  { to: '/', label: 'Главная', icon: 'home' },
-  { to: '/students', label: 'Ученики', icon: 'users' },
-  { to: '/groups', label: 'Группы', icon: 'layers' },
-  { to: '/attendance', label: 'Посещаемость', icon: 'calendarCheck' },
+  { to: '/', label: 'Главная', icon: 'home', perm: 'academic' },
+  { to: '/students', label: 'Ученики', icon: 'users', perm: 'academic' },
+  { to: '/groups', label: 'Группы', icon: 'layers', perm: 'academic' },
+  { to: '/attendance', label: 'Посещаемость', icon: 'calendarCheck', perm: 'academic' },
   { to: '/payments', label: 'Оплаты', icon: 'wallet', perm: 'payments' },
+  { to: '/finance', label: 'Финансы', icon: 'coins', perm: 'finance' },
   { to: '/leads', label: 'Лиды', icon: 'target', perm: 'leads' },
   { to: '/teachers', label: 'Преподаватели', icon: 'graduation', perm: 'teachers.view' },
   { to: '/courses', label: 'Курсы', icon: 'book', perm: 'courses' },

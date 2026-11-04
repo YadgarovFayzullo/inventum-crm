@@ -101,6 +101,22 @@ const MIGRATIONS: string[] = [
   );
   CREATE TABLE settings (key text PRIMARY KEY, value text NOT NULL);
   `,
+  `
+  ALTER TABLE users DROP CONSTRAINT users_role_check;
+  ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('owner','manager','teacher','accountant'));
+  CREATE TABLE finance_entries (
+    id text PRIMARY KEY,
+    kind text NOT NULL CHECK (kind IN ('income','expense')),
+    amount bigint NOT NULL CHECK (amount > 0),
+    date date NOT NULL,
+    category text NOT NULL,
+    description text NOT NULL,
+    method text CHECK (method IN ('cash','card','click','payme','transfer')),
+    created_by text,
+    seq bigserial
+  );
+  CREATE INDEX finance_entries_date ON finance_entries(date DESC);
+  `,
 ]
 
 export async function migrate(sql: Sql) {

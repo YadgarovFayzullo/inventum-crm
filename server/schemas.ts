@@ -10,7 +10,8 @@ export const studentStatus = z.enum(['active', 'frozen', 'left'])
 export const mark = z.enum(['present', 'absent', 'late', 'excused'])
 export const method = z.enum(['cash', 'card', 'click', 'payme', 'transfer'])
 export const leadStatus = z.enum(['new', 'contacted', 'trial', 'won', 'lost'])
-export const role = z.enum(['owner', 'manager', 'teacher'])
+export const role = z.enum(['owner', 'manager', 'teacher', 'accountant'])
+export const financeKind = z.enum(['income', 'expense'])
 
 export const student = z.object({
   id,
@@ -90,6 +91,17 @@ export const lead = z.object({
   createdAt: date,
 })
 export const leadPatch = lead.omit({ id: true, createdAt: true, courseId: true, note: true }).extend({ courseId: z.string().max(40).nullable(), note: z.string().max(2000).nullable() }).partial()
+
+export const financeEntry = z.object({
+  id,
+  kind: financeKind,
+  amount: money.refine((n) => n > 0),
+  date,
+  category: z.string().trim().min(1).max(60),
+  description: z.string().trim().min(3, 'Опишите, почему этот доход или расход').max(500),
+  method: method.optional(),
+})
+export const financeEntryPatch = financeEntry.omit({ id: true }).partial()
 
 export const importData = z.object({
   students: z.array(student),

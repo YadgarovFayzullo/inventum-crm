@@ -36,7 +36,7 @@ export async function createSession(sql: Sql, userId: string, remember: boolean)
   return { token, ttl }
 }
 
-export type SessionUser = { id: string; email: string; role: 'owner' | 'manager' | 'teacher'; name: string; teacherId: string }
+export type SessionUser = { id: string; email: string; role: 'owner' | 'manager' | 'teacher' | 'accountant'; name: string; teacherId: string }
 
 export async function findSession(sql: Sql, token: string): Promise<SessionUser | null> {
   const [row] = await sql<(Omit<SessionUser, 'teacherId'> & { teacherId: string | null; exp: number })[]>`

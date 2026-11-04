@@ -76,8 +76,8 @@ function UserModal({ open, onClose, onSaved, user }: { open: boolean; onClose: (
         value={role}
         disabled={self}
         onChange={(v) => setRole(v as Role)}
-        options={(['owner', 'manager', 'teacher'] as Role[]).map((r) => ({ value: r, label: ROLE_LABEL[r] }))}
-        hint={self ? 'Свою роль менять нельзя' : role === 'owner' ? 'Владелец видит всё, включая зарплаты и настройки' : role === 'manager' ? 'Ученики, группы, оплаты, лиды — без зарплат и настроек' : 'Только свои группы и посещаемость'}
+        options={(['owner', 'manager', 'accountant', 'teacher'] as Role[]).map((r) => ({ value: r, label: ROLE_LABEL[r] }))}
+        hint={self ? 'Свою роль менять нельзя' : role === 'owner' ? 'Владелец видит всё, включая зарплаты и настройки' : role === 'manager' ? 'Ученики, группы, оплаты, лиды — без зарплат и настроек' : role === 'accountant' ? 'Только финансы: доходы, расходы и отчёт' : 'Только свои группы и посещаемость'}
       />
       {role === 'teacher' && (
         <Select
@@ -129,7 +129,7 @@ function UsersCard() {
               <div className="truncate font-medium">{u.name}{u.id === me.id && <span className="font-normal text-subtle"> · это вы</span>}</div>
               <div className="truncate text-[13px] text-muted">{u.email}</div>
             </div>
-            <Badge tone={u.role === 'owner' ? 'dark' : u.role === 'manager' ? 'soft' : 'outline'}>{ROLE_LABEL[u.role]}</Badge>
+            <Badge tone={u.role === 'owner' ? 'dark' : u.role === 'manager' || u.role === 'accountant' ? 'soft' : 'outline'}>{ROLE_LABEL[u.role]}</Badge>
             <IconButton icon="edit" size="sm" label="Изменить роль и доступ" onClick={() => setEdit(u)} />
             {u.id !== me.id && <IconButton icon="trash" size="sm" label="Удалить" onClick={() => setToDelete(u)} />}
           </div>
