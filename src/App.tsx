@@ -15,6 +15,7 @@ const Payments = lazy(() => import('@/pages/Payments'))
 const Leads = lazy(() => import('@/pages/Leads'))
 const Teachers = lazy(() => import('@/pages/Teachers'))
 const Courses = lazy(() => import('@/pages/Courses'))
+const Finance = lazy(() => import('@/pages/Finance'))
 const Settings = lazy(() => import('@/pages/Settings'))
 const UiKit = lazy(() => import('@/pages/UiKit'))
 const Login = lazy(() => import('@/pages/Login'))
@@ -22,7 +23,7 @@ const Login = lazy(() => import('@/pages/Login'))
 /** Страница доступна только при нужном праве, иначе — на главную */
 function Guard({ perm, children }: { perm: Perm; children: ReactNode }) {
   const { can } = useAccess()
-  return can(perm) ? children : <Navigate to="/" replace />
+  return can(perm) ? children : <Navigate to={can('academic') ? '/' : '/finance'} replace />
 }
 
 const router = createBrowserRouter([
@@ -30,19 +31,20 @@ const router = createBrowserRouter([
   {
     element: <AppLayout />,
     children: [
-      { path: '/', element: <Dashboard /> },
-      { path: '/students', element: <Students /> },
-      { path: '/students/:id', element: <StudentDetail /> },
-      { path: '/groups', element: <Groups /> },
-      { path: '/groups/:id', element: <GroupDetail /> },
-      { path: '/attendance', element: <Attendance /> },
+      { path: '/', element: <Guard perm="academic"><Dashboard /></Guard> },
+      { path: '/students', element: <Guard perm="academic"><Students /></Guard> },
+      { path: '/students/:id', element: <Guard perm="academic"><StudentDetail /></Guard> },
+      { path: '/groups', element: <Guard perm="academic"><Groups /></Guard> },
+      { path: '/groups/:id', element: <Guard perm="academic"><GroupDetail /></Guard> },
+      { path: '/attendance', element: <Guard perm="academic"><Attendance /></Guard> },
       { path: '/payments', element: <Guard perm="payments"><Payments /></Guard> },
+      { path: '/finance', element: <Guard perm="finance"><Finance /></Guard> },
       { path: '/leads', element: <Guard perm="leads"><Leads /></Guard> },
       { path: '/teachers', element: <Guard perm="teachers.view"><Teachers /></Guard> },
       { path: '/courses', element: <Guard perm="courses"><Courses /></Guard> },
       { path: '/settings', element: <Guard perm="settings"><Settings /></Guard> },
       { path: '/ui-kit', element: <Guard perm="uikit"><UiKit /></Guard> },
-      { path: '*', element: <Dashboard /> },
+      { path: '*', element: <Guard perm="academic"><Dashboard /></Guard> },
     ],
   },
 ])

@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { z, ZodError } from 'zod'
-import type { Course, Enrollment, Group, Lead, Payment, Student, Teacher, Transfer } from '../src/store/types'
+import type { Course, Enrollment, FinanceEntry, Group, Lead, Payment, Student, Teacher, Transfer } from '../src/store/types'
 import type { Sql } from './db'
 import * as S from './schemas'
 import {
@@ -38,6 +38,7 @@ const addDays = (iso: string, n: number) => {
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`
 }
 const idParam = z.object({ id: S.id })
+const DEFAULT_NAME: Record<Role, string> = { owner: 'Владелец', manager: 'Менеджер', teacher: 'Преподаватель', accountant: 'Бухгалтер' }
 
 /** { camelKey: value } → { snake_column: value } только для разрешённых колонок */
 const toColumns = (patch: Record<string, unknown>, map: Record<string, string>) =>
@@ -90,6 +91,11 @@ async function loadData(sql: Sql, user: SessionUser) {
       enrollments: enrollments.map(toEnrollment),
       transfers: [], attendance: attMap(att), payments: [], leads: [],
     }
+  }
+
+  // Бухгалтер работает только с финансами: данные учеников ему не отдаём, отчёт грузится отдельным запросом
+  if (user.role === 'accountant') {
+    return { ...base, students: [], groups: [], enrollments: [], transfers: [], attendance: {}, payments: [], leads: [] }
   }
 
   const [students, groups, enrollments, transfers, att, payments, leads] = await Promise.all([
@@ -165,6 +171,7 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
   }
   const staff = need('owner', 'manager')
   const owner = need('owner')
+  const finance = need('owner', 'accountant')
   const ok = { ok: true }
 
   /* ---------------- auth ---------------- */
@@ -419,6 +426,51 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
     return ok
   })
 
+  /* ---------------- финансы: бухгалтер и владелец ---------------- */
+  const toEntry = (r: Row): FinanceEntry => ({
+    id: r.id, kind: r.kind, source: 'manual', amount: r.amount, date: r.date, category: r.category,
+    description: r.description, method: r.method ?? undefined,
+  })
+
+  // Журнал за период: ручные записи + оплаты учеников (они всегда доход «Оплата обучения»)
+  app.get('/api/finance', { preHandler: finance }, async (req) => {
+    const { from, to } = z.object({ from: S.date, to: S.date }).parse(req.query)
+    const [manual, paid] = await Promise.all([
+      sql`SELECT * FROM finance_entries WHERE date BETWEEN ${from} AND ${to}`,
+      sql`SELECT p.id, p.amount, p.method, p.date, p.comment, s.first_name, s.last_name, g.name AS group_name
+        FROM payments p LEFT JOIN students s ON s.id = p.student_id LEFT JOIN groups g ON g.id = p.group_id
+        WHERE p.date BETWEEN ${from} AND ${to}`,
+    ])
+    const entries: FinanceEntry[] = [
+      ...manual.map(toEntry),
+      ...paid.map((r): FinanceEntry => ({
+        id: `pay-${r.id}`, kind: 'income', source: 'payment', amount: r.amount, date: r.date, category: 'Оплата обучения', method: r.method,
+        description: [`Оплата обучения: ${`${r.first_name ?? ''} ${r.last_name ?? ''}`.trim() || 'ученик'}`, r.group_name && `группа «${r.group_name}»`, r.comment].filter(Boolean).join(', '),
+      })),
+    ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.id < b.id ? 1 : -1))
+    return { entries }
+  })
+
+  app.post('/api/finance/entries', { preHandler: finance }, async (req) => {
+    const e = S.financeEntry.parse(req.body)
+    await sql`INSERT INTO finance_entries (id, kind, amount, date, category, description, method, created_by)
+      VALUES (${e.id}, ${e.kind}, ${e.amount}, ${e.date}, ${e.category}, ${e.description}, ${e.method ?? null}, ${req.user!.id})`
+    return ok
+  })
+  app.patch('/api/finance/entries/:id', { preHandler: finance }, async (req, reply) => {
+    const { id } = idParam.parse(req.params)
+    const cols = toColumns(S.financeEntryPatch.parse(req.body), { kind: 'kind', amount: 'amount', date: 'date', category: 'category', description: 'description', method: 'method' })
+    if (Object.keys(cols).length) {
+      const r = await sql`UPDATE finance_entries SET ${sql(cols)} WHERE id = ${id}`
+      if (r.count === 0) return reply.code(404).send({ error: 'Запись не найдена' })
+    }
+    return ok
+  })
+  app.delete('/api/finance/entries/:id', { preHandler: finance }, async (req) => {
+    await sql`DELETE FROM finance_entries WHERE id = ${idParam.parse(req.params).id}`
+    return ok
+  })
+
   /* ---------------- настройки, импорт, пользователи (владелец) ---------------- */
   app.patch('/api/settings', { preHandler: owner }, async (req) => {
     const { centerName } = z.object({ centerName: z.string().trim().min(1).max(80) }).parse(req.body)
@@ -454,7 +506,7 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
 
   app.post('/api/users', { preHandler: owner }, async (req, reply) => {
     const b = z.object({ email: S.email, password: S.password, role: S.role, teacherId: S.id.optional(), name: z.string().trim().max(80).optional() }).parse(req.body)
-    let name = b.name || (b.role === 'owner' ? 'Владелец' : 'Менеджер')
+    let name = b.name || DEFAULT_NAME[b.role]
     let teacherId: string | null = null
     if (b.role === 'teacher') {
       const [t] = b.teacherId ? await sql`SELECT first_name, last_name FROM teachers WHERE id = ${b.teacherId}` : []
@@ -494,7 +546,7 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
       if (b.teacherId || b.role) name = `${t.first_name} ${t.last_name}`
     } else {
       teacherId = null
-      if (b.role && !b.name) name = role === 'owner' ? 'Владелец' : 'Менеджер'
+      if (b.role && !b.name) name = DEFAULT_NAME[role]
     }
 
     await sql`UPDATE users SET email = ${b.email ?? cur.email}, role = ${role}, teacher_id = ${teacherId}, name = ${name},

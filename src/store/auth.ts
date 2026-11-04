@@ -3,15 +3,18 @@ import { create } from 'zustand'
 import { api, setUnauthorizedHandler } from '@/lib/api'
 import type { Group } from './types'
 
-export type Role = 'owner' | 'manager' | 'teacher'
+export type Role = 'owner' | 'manager' | 'teacher' | 'accountant'
 
 export const ROLE_LABEL: Record<Role, string> = {
   owner: 'Владелец',
   manager: 'Менеджер',
   teacher: 'Преподаватель',
+  accountant: 'Бухгалтер',
 }
 
 export type Perm =
+  | 'academic' // главная, ученики, группы, посещаемость
+  | 'finance' // доходы и расходы, финансовый отчёт
   | 'students.manage' // добавлять/редактировать учеников, записывать и переводить по группам
   | 'groups.manage' // создавать, менять, архивировать группы
   | 'payments' // оплаты, балансы, должники, цены
@@ -27,12 +30,14 @@ export type Perm =
   Преподаватель — только свои группы: посещаемость и список своих учеников.
   Менеджер — всё то же самое по всем группам + управление учениками, группами, оплатами, лидами.
   Владелец — всё, включая зарплаты, курсы и настройки.
+  Бухгалтер — только финансы: доходы, расходы и отчёт; учеников и группы не видит.
 */
-const MANAGER: Perm[] = ['students.manage', 'groups.manage', 'payments', 'leads', 'teachers.view']
+const MANAGER: Perm[] = ['academic', 'students.manage', 'groups.manage', 'payments', 'leads', 'teachers.view']
 const PERMS: Record<Role, Perm[]> = {
-  teacher: [],
+  teacher: ['academic'],
+  accountant: ['finance'],
   manager: MANAGER,
-  owner: [...MANAGER, 'teachers.manage', 'courses', 'settings', 'uikit', 'funnel'],
+  owner: [...MANAGER, 'finance', 'teachers.manage', 'courses', 'settings', 'uikit', 'funnel'],
 }
 
 export type User = { id: string; email: string; role: Role; name: string; teacherId: string }

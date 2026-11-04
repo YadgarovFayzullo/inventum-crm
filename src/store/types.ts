@@ -100,3 +100,21 @@ export interface Lead {
 export interface Settings {
   centerName: string
 }
+
+export type FinanceKind = 'income' | 'expense'
+
+export const INCOME_CATEGORIES = ['Оплата обучения', 'Аренда помещений', 'Продажа материалов', 'Спонсорство и гранты', 'Прочие доходы', 'Другое'] as const
+export const EXPENSE_CATEGORIES = ['Аренда', 'Зарплаты', 'Коммунальные услуги', 'Маркетинг и реклама', 'Налоги', 'Оборудование и мебель', 'Канцелярия и материалы', 'Прочие расходы', 'Другое'] as const
+
+/** Строка финансового журнала. Оплаты учеников попадают в него автоматически (source = 'payment'). */
+export interface FinanceEntry {
+  id: ID
+  kind: FinanceKind
+  source: 'manual' | 'payment'
+  amount: number
+  date: string
+  category: string
+  /** Почему доход или расход: у ручных записей обязателен */
+  description: string
+  method?: PaymentMethod
+}

@@ -270,6 +270,53 @@ describe('API', () => {
     assert.equal((await call(owner, 'POST', '/api/import', { students: 'oops' })).status, 400)
   })
 
+  it('бухгалтер: видит только финансы, у каждой записи есть причина', async () => {
+    const created = await call(owner, 'POST', '/api/users', { email: 'acc@test.uz', password: 'acc-pass-12', role: 'accountant' })
+    assert.equal(created.status, 200)
+    assert.equal(created.body.role, 'accountant')
+    const acc = await login('acc@test.uz', 'acc-pass-12')
+
+    // данные учеников и групп бухгалтеру не отдаются, а менять их он не может
+    const boot = (await call(acc, 'GET', '/api/bootstrap')).body
+    assert.deepEqual([boot.students, boot.groups, boot.payments, boot.leads], [[], [], [], []])
+    assert.equal((await call(acc, 'POST', '/api/students', student('sx'))).status, 403)
+    assert.equal((await call(acc, 'POST', '/api/payments', { id: 'px', studentId: 's1', groupId: 'g2', amount: 1, method: 'cash', date: d(2) })).status, 403)
+    assert.equal((await call(acc, 'GET', '/api/users')).status, 403)
+    assert.equal((await call(manager, 'GET', `/api/finance?from=${d(1)}&to=${d(30)}`)).status, 403)
+    assert.equal((await call(teacher1, 'GET', `/api/finance?from=${d(1)}&to=${d(30)}`)).status, 403)
+
+    // описание «почему» обязательно
+    const exp = { id: 'f1', kind: 'expense', amount: 1200000, date: d(5), category: 'Аренда', description: 'Аренда кабинета за октябрь по договору №12' }
+    assert.equal((await call(acc, 'POST', '/api/finance/entries', { ...exp, description: '' })).status, 400)
+    assert.equal((await call(acc, 'POST', '/api/finance/entries', { ...exp, amount: 0 })).status, 400)
+    assert.equal((await call(acc, 'POST', '/api/finance/entries', { ...exp, kind: 'other' })).status, 400)
+    assert.equal((await call(acc, 'POST', '/api/finance/entries', exp)).status, 200)
+    assert.equal((await call(acc, 'POST', '/api/finance/entries', { id: 'f2', kind: 'income', amount: 300000, date: d(6), category: 'Спонсорство и гранты', description: 'Грант на оборудование' })).status, 200)
+
+    // журнал: ручные записи + оплата ученика как автоматический доход
+    const log = (await call(acc, 'GET', `/api/finance?from=${d(1)}&to=${d(30)}`)).body.entries
+    const pay = log.find((e: any) => e.id === 'pay-p1')
+    assert.equal(pay.kind, 'income')
+    assert.equal(pay.source, 'payment')
+    assert.match(pay.description, /Оплата обучения: Азиз Каримов/)
+    assert.equal(log.find((e: any) => e.id === 'f1').description, exp.description)
+    const sum = (k: string) => log.filter((e: any) => e.kind === k).reduce((a: number, e: any) => a + e.amount, 0)
+    const paid = log.filter((e: any) => e.source === 'payment').reduce((a: number, e: any) => a + e.amount, 0)
+    assert.ok(paid >= 450000)
+    assert.equal(sum('income'), paid + 300000)
+    assert.equal(sum('expense'), 1200000)
+    // период ограничивает выборку
+    assert.equal((await call(acc, 'GET', `/api/finance?from=${d(10)}&to=${d(30)}`)).body.entries.length, 0)
+
+    // правка и удаление; запись оплаты через финансы не удалить
+    assert.equal((await call(acc, 'PATCH', '/api/finance/entries/f1', { description: 'x' })).status, 400)
+    assert.equal((await call(acc, 'PATCH', '/api/finance/entries/f1', { amount: 1300000 })).status, 200)
+    assert.equal((await call(acc, 'PATCH', '/api/finance/entries/nope', { amount: 5 })).status, 404)
+    assert.equal((await call(acc, 'DELETE', '/api/finance/entries/pay-p1')).status, 200)
+    assert.equal((await call(owner, 'GET', `/api/finance?from=${d(1)}&to=${d(30)}`)).body.entries.some((e: any) => e.id === 'pay-p1'), true)
+    assert.equal((await call(acc, 'DELETE', '/api/finance/entries/f2')).status, 200)
+  })
+
   it('защита от перебора пароля', async () => {
     let last = 0
     for (let i = 0; i < 7; i++) last = (await call(null, 'POST', '/api/auth/login', { email: 'victim@test.uz', password: `wrong${i}` })).status
