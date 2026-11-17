@@ -99,6 +99,8 @@ export interface Lead {
 
 export interface Settings {
   centerName: string
+  /** Кабинеты центра: по ним проверяется, что две группы не занимают один кабинет одновременно */
+  rooms: string[]
 }
 
 export type FinanceKind = 'income' | 'expense'

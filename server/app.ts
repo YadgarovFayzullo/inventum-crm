@@ -6,9 +6,10 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { z, ZodError } from 'zod'
+import { describeConflict, findConflicts } from '../src/lib/conflicts'
 import { addMonths, monthEnd, monthStart } from '../src/lib/dates'
 import type { Course, Enrollment, FinanceEntry, Group, Lead, Payment, RecurringExpense, Student, Teacher, Transfer } from '../src/store/types'
-import type { Sql } from './db'
+import type { Sql, Tx } from './db'
 import * as S from './schemas'
 import {
   createSession, destroyOtherSessions, destroySession, DUMMY_HASH, findSession, hashPassword, LoginLimiter, purgeExpiredSessions,
@@ -66,15 +67,40 @@ const toPayment = (r: Row): Payment => ({ id: r.id, studentId: r.student_id, gro
 const toLead = (r: Row): Lead => ({ id: r.id, name: r.name, phone: r.phone, courseId: r.course_id ?? undefined, source: r.source, status: r.status, note: r.note ?? undefined, createdAt: r.created_at })
 const attMap = (rows: Row[]) => Object.fromEntries(rows.map((r) => [`${r.g}|${r.d}|${r.s}`, r.m]))
 
+/** Настройки центра. Пока список кабинетов не сохраняли — берём кабинеты из существующих групп. */
+async function loadSettings(sql: Sql) {
+  const rows = await sql`SELECT key, value FROM settings WHERE key IN ('centerName', 'rooms')`
+  const map = new Map(rows.map((r) => [r.key as string, r.value as string]))
+  let rooms: string[]
+  if (map.has('rooms')) rooms = JSON.parse(map.get('rooms')!) as string[]
+  else {
+    const used = await sql`SELECT DISTINCT trim(room) AS room FROM groups WHERE trim(room) <> '' ORDER BY 1`
+    rooms = used.map((r) => r.room as string)
+  }
+  return { centerName: map.get('centerName') ?? 'INVENTUM', rooms }
+}
+
+/** Ошибка 409, если группа пересекается по кабинету или преподавателю с другой активной группой */
+async function assertNoConflicts(tx: Tx, g: { id: string; teacherId: string; days: number[]; timeStart: string; timeEnd: string; room: string; archived: boolean }) {
+  if (g.archived) return
+  if (g.timeEnd <= g.timeStart) throw Object.assign(new Error('Конец занятия должен быть позже начала'), { statusCode: 400 })
+  // Блокировка на время транзакции: два одновременных сохранения не займут один и тот же слот
+  await tx`SELECT pg_advisory_xact_lock(hashtext('inventum:schedule'))`
+  const rows = await tx`SELECT g.id, g.name, g.teacher_id, g.days, g.time_start, g.time_end, g.room, g.archived, t.first_name, t.last_name
+    FROM groups g LEFT JOIN teachers t ON t.id = g.teacher_id WHERE NOT g.archived AND g.id <> ${g.id}`
+  const others = rows.map((r) => ({ id: r.id, name: r.name, teacherId: r.teacher_id, days: r.days, timeStart: r.time_start, timeEnd: r.time_end, room: r.room, archived: r.archived, teacher: `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim() }))
+  const [c] = findConflicts(g, others)
+  if (c) throw Object.assign(new Error(describeConflict(c, others.find((o) => o.id === c.group.id)?.teacher)), { statusCode: 409 })
+}
+
 /** Данные, которые видит роль. Преподаватель получает только свои группы и их учеников — без денег и лидов. */
 async function loadData(sql: Sql, user: SessionUser) {
-  const [centerRow] = await sql`SELECT value FROM settings WHERE key = 'centerName'`
-  const centerName: string = centerRow?.value ?? 'INVENTUM'
+  const settings = await loadSettings(sql)
   const [teachers, courses] = await Promise.all([
     sql`SELECT * FROM teachers ORDER BY created_at, seq`,
     sql`SELECT * FROM courses ORDER BY seq`,
   ])
-  const base = { courses: courses.map(toCourse), teachers: teachers.map((r) => toTeacher(r, user.role === 'owner')), settings: { centerName } }
+  const base = { courses: courses.map(toCourse), teachers: teachers.map((r) => toTeacher(r, user.role === 'owner')), settings }
 
   if (user.role === 'teacher') {
     const groups = await sql`SELECT * FROM groups WHERE teacher_id = ${user.teacherId} ORDER BY seq`
@@ -310,21 +336,36 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
   /* ---------------- группы ---------------- */
   app.post('/api/groups', { preHandler: staff }, async (req) => {
     const g = S.group.parse(req.body)
-    await sql`INSERT INTO groups (id, name, course_id, teacher_id, days, time_start, time_end, room, price, capacity, start_date, archived)
-      VALUES (${g.id}, ${g.name}, ${g.courseId}, ${g.teacherId}, ${sql.json(g.days)}, ${g.timeStart}, ${g.timeEnd}, ${g.room}, ${g.price}, ${g.capacity}, ${g.startDate}, ${g.archived})`
+    await sql.begin(async (tx) => {
+      await assertNoConflicts(tx, g)
+      await tx`INSERT INTO groups (id, name, course_id, teacher_id, days, time_start, time_end, room, price, capacity, start_date, archived)
+        VALUES (${g.id}, ${g.name}, ${g.courseId}, ${g.teacherId}, ${tx.json(g.days)}, ${g.timeStart}, ${g.timeEnd}, ${g.room}, ${g.price}, ${g.capacity}, ${g.startDate}, ${g.archived})`
+    })
     return ok
   })
-  app.patch('/api/groups/:id', { preHandler: staff }, async (req) => {
+  app.patch('/api/groups/:id', { preHandler: staff }, async (req, reply) => {
     const { id } = idParam.parse(req.params)
     const { days, ...patch } = S.groupPatch.parse(req.body)
     const cols = toColumns(patch, {
       name: 'name', courseId: 'course_id', teacherId: 'teacher_id', timeStart: 'time_start', timeEnd: 'time_end',
       room: 'room', price: 'price', capacity: 'capacity', startDate: 'start_date', archived: 'archived',
     })
-    await sql.begin(async (tx) => {
+    const found = await sql.begin(async (tx) => {
+      const [cur] = await tx`SELECT teacher_id, days, time_start, time_end, room, archived FROM groups WHERE id = ${id}`
+      if (!cur) return false
+      // переименование или смена цены расписание не трогает — проверяем только когда меняется слот
+      const touches = days || ['teacherId', 'timeStart', 'timeEnd', 'room', 'archived'].some((k) => k in patch)
+      if (touches) {
+        await assertNoConflicts(tx, {
+          id, teacherId: patch.teacherId ?? cur.teacher_id, days: days ?? cur.days, timeStart: patch.timeStart ?? cur.time_start,
+          timeEnd: patch.timeEnd ?? cur.time_end, room: patch.room ?? cur.room, archived: patch.archived ?? cur.archived,
+        })
+      }
       if (Object.keys(cols).length) await tx`UPDATE groups SET ${tx(cols)} WHERE id = ${id}`
       if (days) await tx`UPDATE groups SET days = ${tx.json(days)} WHERE id = ${id}`
+      return true
     })
+    if (!found) return reply.code(404).send({ error: 'Группа не найдена' })
     return ok
   })
   app.delete('/api/groups/:id', { preHandler: staff }, async (req) => {
@@ -525,8 +566,11 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
 
   /* ---------------- настройки, импорт, пользователи (владелец) ---------------- */
   app.patch('/api/settings', { preHandler: owner }, async (req) => {
-    const { centerName } = z.object({ centerName: z.string().trim().min(1).max(80) }).parse(req.body)
-    await sql`INSERT INTO settings (key, value) VALUES ('centerName', ${centerName}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
+    const b = z.object({ centerName: z.string().trim().min(1).max(80), rooms: S.rooms }).partial().parse(req.body)
+    await sql.begin(async (tx) => {
+      if (b.centerName !== undefined) await tx`INSERT INTO settings (key, value) VALUES ('centerName', ${b.centerName}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
+      if (b.rooms !== undefined) await tx`INSERT INTO settings (key, value) VALUES ('rooms', ${JSON.stringify(b.rooms)}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
+    })
     return ok
   })
 
@@ -549,6 +593,8 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
       for (const p of [...d.payments].reverse()) await tx`INSERT INTO payments (id, student_id, group_id, amount, method, date, comment) VALUES (${p.id}, ${p.studentId}, ${p.groupId}, ${p.amount}, ${p.method}, ${p.date}, ${p.comment ?? null})`
       for (const l of [...d.leads].reverse()) await tx`INSERT INTO leads (id, name, phone, course_id, source, status, note, created_at) VALUES (${l.id}, ${l.name}, ${l.phone}, ${l.courseId ?? null}, ${l.source}, ${l.status}, ${l.note ?? null}, ${l.createdAt})`
       await tx`INSERT INTO settings (key, value) VALUES ('centerName', ${d.settings.centerName}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
+      if (d.settings.rooms) await tx`INSERT INTO settings (key, value) VALUES ('rooms', ${JSON.stringify(d.settings.rooms)}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
+      else await tx`DELETE FROM settings WHERE key = 'rooms'`
     })
     return ok
   })

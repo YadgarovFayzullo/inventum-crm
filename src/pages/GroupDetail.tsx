@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { describeConflict, findConflicts } from '@/lib/conflicts'
 import { currentMonth, formatDate, formatDays, today } from '@/lib/dates'
 import { formatMoney, formatPhone, fullName } from '@/lib/format'
 import { AttendanceGrid, MarkLegend } from '@/components/AttendanceGrid'
@@ -138,7 +139,14 @@ export default function GroupDetail() {
           <Button variant="secondary" icon="edit" onClick={() => setEditOpen(true)}>Изменить</Button>
           <Button
             variant="secondary"
-            onClick={() => { updateGroup(id, { archived: !group.archived }); toast(group.archived ? 'Группа восстановлена' : 'Группа в архиве') }}
+            onClick={() => {
+              if (group.archived) {
+                const [c] = findConflicts({ ...group, archived: false }, useStore.getState().groups)
+                if (c) return toast(`Нельзя восстановить. ${describeConflict(c, teacherMap.has(c.group.teacherId) ? fullName(teacherMap.get(c.group.teacherId)!) : undefined)}. Сначала измените время или кабинет`, 'error')
+              }
+              updateGroup(id, { archived: !group.archived })
+              toast(group.archived ? 'Группа восстановлена' : 'Группа в архиве')
+            }}
           >
             {group.archived ? 'Из архива' : 'В архив'}
           </Button>

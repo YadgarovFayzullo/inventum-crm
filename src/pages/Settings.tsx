@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { ApiError, api } from '@/lib/api'
+import { normRoom } from '@/lib/conflicts'
 import { today } from '@/lib/dates'
 import { fullName } from '@/lib/format'
 import { ROLE_LABEL, useSession, type Role } from '@/store/auth'
@@ -150,6 +151,55 @@ function UsersCard() {
   )
 }
 
+/** Список кабинетов: в форме группы кабинет выбирается из него, по нему проверяются пересечения */
+function RoomsCard() {
+  const rooms = useStore((s) => s.settings.rooms)
+  const groups = useStore((s) => s.groups)
+  const updateSettings = useStore((s) => s.updateSettings)
+  const [name, setName] = useState('')
+  const used = (r: string) => groups.filter((g) => !g.archived && normRoom(g.room) === normRoom(r)).length
+  const dup = rooms.some((r) => normRoom(r) === normRoom(name))
+
+  const add = () => {
+    const v = name.trim()
+    if (!v || dup) return
+    updateSettings({ rooms: [...rooms, v] })
+    setName('')
+    toast('Кабинет добавлен')
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Кабинеты" subtitle="Две группы не могут занимать один кабинет в одно и то же время" />
+      <div className="mb-4 grid gap-2">
+        {rooms.length === 0 && <p className="text-[13px] text-muted">Пока ни одного кабинета — добавьте первый.</p>}
+        {rooms.map((r) => {
+          const n = used(r)
+          return (
+            <div key={r} className="flex items-center justify-between gap-3 rounded-xl border border-line px-4 py-2.5">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{r}</div>
+                <div className="text-[13px] text-muted">{n ? `Активных групп: ${n}` : 'Свободен'}</div>
+              </div>
+              <IconButton
+                icon="trash"
+                label={n ? 'Кабинет занят группами — сначала перенесите их' : `Удалить кабинет ${r}`}
+                variant="secondary"
+                disabled={n > 0}
+                onClick={() => { updateSettings({ rooms: rooms.filter((x) => x !== r) }); toast('Кабинет удалён') }}
+              />
+            </div>
+          )
+        })}
+      </div>
+      <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); add() }}>
+        <Input className="min-w-60 flex-1" label="Новый кабинет" placeholder="Например: 101 или Большой зал" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} error={dup ? 'Такой кабинет уже есть' : undefined} />
+        <Button type="submit" icon="plus" disabled={!name.trim() || dup}>Добавить</Button>
+      </form>
+    </Card>
+  )
+}
+
 export default function Settings() {
   const settings = useStore((s) => s.settings)
   const { updateSettings, resetDemo, clearAll, importData } = useStore.getState()
@@ -193,6 +243,7 @@ export default function Settings() {
             <Button disabled={!name.trim() || name === settings.centerName} onClick={() => { updateSettings({ centerName: name.trim() }); toast('Сохранено') }}>Сохранить</Button>
           </div>
         </Card>
+        <RoomsCard />
         <UsersCard />
         <Card>
           <CardHeader title="Резервная копия" subtitle="Скачайте копию данных в файл или восстановите из файла. Фотографии учеников в копию не входят." />

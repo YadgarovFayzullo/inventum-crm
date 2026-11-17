@@ -1,6 +1,7 @@
 import postgres from 'postgres'
 
 export type Sql = postgres.Sql
+export type Tx = postgres.TransactionSql
 
 /** Один пул на процесс. Суммы (bigint) приходят числами, даты (date) — строками 'YYYY-MM-DD', undefined пишется как NULL. */
 export function connect(url: string, max = 10): Sql {

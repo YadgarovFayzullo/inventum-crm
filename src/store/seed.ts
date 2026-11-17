@@ -155,5 +155,5 @@ export function createSeed(): Data {
     { id: 'l-8', name: 'Фарида Юлдашева', phone: phone(), courseId: 'c-ielts', source: 'Instagram', status: 'won', createdAt: addDays(now, -12) },
   ]
 
-  return { students, courses, teachers, groups, enrollments, transfers, attendance, payments, leads, settings: { centerName: 'INVENTUM' } }
+  return { students, courses, teachers, groups, enrollments, transfers, attendance, payments, leads, settings: { centerName: 'INVENTUM', rooms: ['101', '102', '203', 'IT-lab'] } }
 }
