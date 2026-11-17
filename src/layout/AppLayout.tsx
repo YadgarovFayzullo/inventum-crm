@@ -12,6 +12,7 @@ const NAV: NavDef[] = [
   { to: '/', label: 'Главная', icon: 'home', perm: 'academic' },
   { to: '/students', label: 'Ученики', icon: 'users', perm: 'academic' },
   { to: '/groups', label: 'Группы', icon: 'layers', perm: 'academic' },
+  { to: '/schedule', label: 'Расписание', icon: 'calendar', perm: 'academic' },
   { to: '/attendance', label: 'Посещаемость', icon: 'calendarCheck', perm: 'academic' },
   { to: '/payments', label: 'Оплаты', icon: 'wallet', perm: 'payments' },
   { to: '/finance', label: 'Финансы', icon: 'coins', perm: 'finance' },

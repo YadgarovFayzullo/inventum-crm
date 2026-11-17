@@ -124,6 +124,9 @@ export const recurringPatch = z.object({
   endMonth: month.nullable(),
 }).partial()
 
+export const rooms = z.array(z.string().trim().min(1).max(40)).max(50)
+  .refine((r) => new Set(r.map((x) => x.toLowerCase())).size === r.length, 'Кабинеты не должны повторяться')
+
 export const importData = z.object({
   students: z.array(student),
   courses: z.array(course),
@@ -134,7 +137,7 @@ export const importData = z.object({
   attendance: z.record(z.string().regex(/^[A-Za-z0-9_-]+\|\d{4}-\d{2}-\d{2}\|[A-Za-z0-9_-]+$/), mark),
   payments: z.array(payment),
   leads: z.array(lead),
-  settings: z.object({ centerName: z.string().trim().min(1).max(80) }),
+  settings: z.object({ centerName: z.string().trim().min(1).max(80), rooms: rooms.optional() }),
 })
 
 export const password = z.string().min(8).max(200)

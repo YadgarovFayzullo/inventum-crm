@@ -10,6 +10,7 @@ const Students = lazy(() => import('@/pages/Students'))
 const StudentDetail = lazy(() => import('@/pages/StudentDetail'))
 const Groups = lazy(() => import('@/pages/Groups'))
 const GroupDetail = lazy(() => import('@/pages/GroupDetail'))
+const Schedule = lazy(() => import('@/pages/Schedule'))
 const Attendance = lazy(() => import('@/pages/Attendance'))
 const Payments = lazy(() => import('@/pages/Payments'))
 const Leads = lazy(() => import('@/pages/Leads'))
@@ -36,6 +37,7 @@ const router = createBrowserRouter([
       { path: '/students/:id', element: <Guard perm="academic"><StudentDetail /></Guard> },
       { path: '/groups', element: <Guard perm="academic"><Groups /></Guard> },
       { path: '/groups/:id', element: <Guard perm="academic"><GroupDetail /></Guard> },
+      { path: '/schedule', element: <Guard perm="academic"><Schedule /></Guard> },
       { path: '/attendance', element: <Guard perm="academic"><Attendance /></Guard> },
       { path: '/payments', element: <Guard perm="payments"><Payments /></Guard> },
       { path: '/finance', element: <Guard perm="finance"><Finance /></Guard> },

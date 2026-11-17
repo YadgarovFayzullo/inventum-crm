@@ -70,7 +70,7 @@ const patchById = <T extends { id: ID }>(list: T[], id: ID, patch: Partial<T>) =
 
 const emptyData = (): Data => ({
   students: [], courses: [], teachers: [], groups: [], enrollments: [], transfers: [],
-  attendance: {}, payments: [], leads: [], settings: { centerName: 'INVENTUM' },
+  attendance: {}, payments: [], leads: [], settings: { centerName: 'INVENTUM', rooms: [] },
 })
 
 /** undefined → null, чтобы сервер понял «очистить поле» (в JSON undefined просто пропадает) */

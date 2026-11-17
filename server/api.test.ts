@@ -78,7 +78,7 @@ describe('API', () => {
     for (const [id, name] of [['t1', 'Дилноза'], ['t2', 'Жахонгир']] as const)
       assert.equal((await call(owner, 'POST', '/api/teachers', { id, firstName: name, lastName: 'Тест', phone: '', subject: 'EN', salaryPercent: 40, createdAt: d(1) })).status, 200)
     assert.equal((await call(owner, 'POST', '/api/groups', group('g1', 't1'))).status, 200)
-    assert.equal((await call(owner, 'POST', '/api/groups', group('g2', 't2'))).status, 200)
+    assert.equal((await call(owner, 'POST', '/api/groups', group('g2', 't2', { room: '2' }))).status, 200)
     assert.equal((await call(owner, 'POST', '/api/students', { ...student('s1'), enrollment: { id: 'e1', groupId: 'g1', startDate: d(1) } })).status, 200)
     assert.equal((await call(owner, 'POST', '/api/students', { ...student('s2', { firstName: 'Мадина' }), enrollment: { id: 'e2', groupId: 'g2', startDate: d(1) } })).status, 200)
     assert.equal((await call(owner, 'POST', '/api/payments', { id: 'p1', studentId: 's1', groupId: 'g1', amount: 450000, method: 'cash', date: d(2) })).status, 200)
@@ -339,6 +339,44 @@ describe('API', () => {
     assert.equal(last, 429)
     // верный вход под другим email не блокируется
     assert.equal((await call(null, 'POST', '/api/auth/login', { email: 'owner@test.uz', password: 'owner-pass-2' })).status, 200)
+  })
+
+  it('расписание: одна группа на кабинет и на преподавателя в одно время', async () => {
+    // пока список кабинетов не сохраняли — он собирается из групп
+    assert.deepEqual((await call(owner, 'GET', '/api/bootstrap')).body.settings.rooms, ['1', '2'])
+    assert.equal((await call(owner, 'POST', '/api/teachers', { id: 't3', firstName: 'Сардор', lastName: 'Тест', phone: '', subject: 'EN', salaryPercent: 40, createdAt: d(1) })).status, 200)
+
+    // g1: кабинет 1, Пн/Ср/Пт 10:00–11:30, преподаватель t1
+    const room = await call(manager, 'POST', '/api/groups', group('g3', 't3', { days: [1], timeStart: '11:00', timeEnd: '12:00', room: ' 1 ' }))
+    assert.equal(room.status, 409)
+    assert.match(room.body.error, /Кабинет 1 занят: «G g1» Пн 10:00–11:30/)
+    assert.equal((await call(manager, 'POST', '/api/groups', group('g3', 't3', { days: [1], timeStart: '11:30', timeEnd: '13:00' }))).status, 200, 'стык 11:30 — не пересечение')
+
+    const teacher = await call(manager, 'POST', '/api/groups', group('g4', 't1', { days: [3], timeStart: '10:30', timeEnd: '11:00', room: '3' }))
+    assert.equal(teacher.status, 409)
+    assert.match(teacher.body.error, /Дилноза Тест в это время ведёт другую группу/)
+    assert.equal((await call(manager, 'POST', '/api/groups', group('g4', 't1', { days: [2, 4] }))).status, 200, 'другие дни')
+    assert.equal((await call(manager, 'POST', '/api/groups', group('g9', 't3', { timeStart: '12:00', timeEnd: '12:00', room: '9' }))).status, 400)
+
+    // правка: слот проверяется, переименование — нет
+    assert.equal((await call(manager, 'PATCH', '/api/groups/g4', { days: [1] })).status, 409)
+    assert.equal((await call(manager, 'PATCH', '/api/groups/g4', { name: 'Вторник-четверг' })).status, 200)
+    assert.equal((await call(manager, 'PATCH', '/api/groups/nope', { days: [1] })).status, 404)
+
+    // архивная группа слот не занимает, но и восстановить её поверх чужого занятия нельзя
+    assert.equal((await call(manager, 'PATCH', '/api/groups/g3', { archived: true })).status, 200)
+    assert.equal((await call(manager, 'POST', '/api/groups', group('g5', 't2', { days: [1], timeStart: '12:00', timeEnd: '13:00' }))).status, 200)
+    assert.equal((await call(manager, 'PATCH', '/api/groups/g3', { archived: false })).status, 409)
+
+    // кабинеты в настройках
+    assert.equal((await call(manager, 'PATCH', '/api/settings', { rooms: ['1'] })).status, 403)
+    assert.equal((await call(owner, 'PATCH', '/api/settings', { rooms: ['1', 'Зал'] })).status, 200)
+    assert.equal((await call(owner, 'PATCH', '/api/settings', { rooms: ['Зал', 'зал'] })).status, 400)
+    const b = (await call(owner, 'GET', '/api/bootstrap')).body
+    assert.deepEqual(b.settings.rooms, ['1', 'Зал'])
+    assert.ok(b.settings.centerName, 'название центра не затёрто')
+
+    for (const id of ['g3', 'g4', 'g5']) assert.equal((await call(owner, 'DELETE', `/api/groups/${id}`)).status, 200)
   })
 
   it('удаление группы каскадно чистит записи и посещаемость', async () => {
