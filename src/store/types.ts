@@ -50,6 +50,10 @@ export interface Group {
   capacity: number
   startDate: string
   archived: boolean
+  /** Онлайн-группа: без кабинета, пересекается с другими только по преподавателю */
+  online?: boolean
+  /** Ссылка на онлайн-урок (Zoom, Meet, Telegram) */
+  meetingUrl?: string
 }
 
 /** Нахождение ученика в группе за период. Перевод = закрытие одного и открытие другого. */

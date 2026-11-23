@@ -6,6 +6,8 @@ const phone = z.string().regex(/^\d{0,9}$/)
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
 const time = z.string().regex(/^\d{2}:\d{2}$/)
 const money = z.number().int().min(0).max(100_000_000_000)
+// ссылка на онлайн-урок (Zoom, Meet, Telegram): только http(s), чтобы не подсунуть javascript:
+const meetingUrl = z.string().trim().max(500).regex(/^https?:\/\/\S+$/i, 'Ссылка должна начинаться с https://')
 const weekdays = z.array(z.number().int().min(1).max(7)).max(7)
 
 export const studentStatus = z.enum(['active', 'frozen', 'left'])
@@ -69,8 +71,11 @@ export const group = z.object({
   capacity: z.number().int().min(1).max(500),
   startDate: date,
   archived: z.boolean(),
+  /** Онлайн-группа: без кабинета */
+  online: z.boolean().default(false),
+  meetingUrl: meetingUrl.optional(),
 })
-export const groupPatch = group.omit({ id: true }).partial()
+export const groupPatch = group.omit({ id: true, online: true, meetingUrl: true }).extend({ online: z.boolean(), meetingUrl: meetingUrl.nullable() }).partial()
 
 export const enrollment = z.object({ id, studentId: id, groupId: id, startDate: date, endDate: date.optional() })
 export const transferRec = z.object({ id, studentId: id, fromGroupId: id, toGroupId: id, date, reason: z.string().max(300).optional() })

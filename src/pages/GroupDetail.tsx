@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { describeConflict, findConflicts } from '@/lib/conflicts'
 import { currentMonth, formatDate, formatDays, today } from '@/lib/dates'
-import { formatMoney, formatPhone, fullName, phoneHref } from '@/lib/format'
+import { formatMoney, formatPhone, fullName, phoneHref, placeLabel } from '@/lib/format'
 import { AttendanceGrid, MarkLegend } from '@/components/AttendanceGrid'
 import { ConvertLeadModal } from '@/components/ConvertLeadModal'
 import { EnrollModal } from '@/components/EnrollModal'
@@ -160,7 +160,12 @@ export default function GroupDetail() {
             <span className="flex items-center gap-1.5"><Icon name="graduation" size={16} />{teacher ? fullName(teacher) : '—'}</span>
             <span className="flex items-center gap-1.5"><Icon name="calendar" size={16} />{formatDays(group.days)}</span>
             <span className="flex items-center gap-1.5"><Icon name="clock" size={16} />{group.timeStart}–{group.timeEnd}</span>
-            <span className="flex items-center gap-1.5"><Icon name="door" size={16} />Каб. {group.room || '—'}</span>
+            <span className="flex items-center gap-1.5"><Icon name={group.online ? 'location' : 'door'} size={16} />{placeLabel(group)}</span>
+            {group.online && group.meetingUrl && (
+              <a href={group.meetingUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline">
+                <Icon name="arrowUpRight" size={16} />Ссылка на урок
+              </a>
+            )}
           </div>
         </div>
         {manageGroup && <div className="flex flex-wrap gap-2">

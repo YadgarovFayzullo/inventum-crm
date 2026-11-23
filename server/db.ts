@@ -139,6 +139,11 @@ const MIGRATIONS: string[] = [
   ALTER TABLE leads ADD COLUMN preferred_slot text CHECK (preferred_slot IN ('morning','afternoon','evening'));
   CREATE INDEX leads_group ON leads(group_id) WHERE group_id IS NOT NULL;
   `,
+  `
+  -- Онлайн-группа занимается без кабинета (кабинет пустой), у неё может быть ссылка на урок
+  ALTER TABLE groups ADD COLUMN online boolean NOT NULL DEFAULT false;
+  ALTER TABLE groups ADD COLUMN meeting_url text;
+  `,
 ]
 
 export async function migrate(sql: Sql) {

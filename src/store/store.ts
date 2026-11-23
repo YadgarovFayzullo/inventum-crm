@@ -179,7 +179,7 @@ export const useStore = create<Data & Actions & { loaded: boolean }>()((set, get
   },
   updateGroup: (id, patch) => {
     set((st) => ({ groups: patchById(st.groups, id, patch) }))
-    push(() => api.patch(`/groups/${id}`, patch))
+    push(() => api.patch(`/groups/${id}`, clearable(patch, ['meetingUrl'])))
   },
   deleteGroup: (id) => {
     set((st) => ({

@@ -19,13 +19,15 @@ type SelectProps = {
   className?: string
   /** Поиск включается автоматически, если пунктов больше этого числа */
   searchFrom?: number
+  /** Можно ввести своё значение: в поиске появляется пункт «Добавить «…»» (поиск тогда виден всегда) */
+  creatable?: boolean
 }
 
 const GAP = 6
 const PAD = 8
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е').trim()
 
-export function Select({ value = '', onChange, options, label, hint, error, placeholder, disabled, className, searchFrom = 6 }: SelectProps) {
+export function Select({ value = '', onChange, options, label, hint, error, placeholder, disabled, className, searchFrom = 6, creatable }: SelectProps) {
   const id = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
@@ -36,14 +38,18 @@ export function Select({ value = '', onChange, options, label, hint, error, plac
   const [hl, setHl] = useState(0)
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
 
-  const selected = options.find((o) => o.value === value)
-  const searchable = options.length > searchFrom
+  // своё значение, которого нет в списке, показываем как есть
+  const selected = options.find((o) => o.value === value) ?? (creatable && value ? { value, label: value } : undefined)
+  const searchable = creatable || options.length > searchFrom
 
   const items = useMemo(() => {
     const all: Option[] = placeholder !== undefined ? [{ value: '', label: placeholder }, ...options] : options
     const t = norm(q)
-    return t ? all.filter((o) => o.value !== '' && norm(o.label).includes(t)) : all
-  }, [options, placeholder, q])
+    if (!t) return all
+    const found = all.filter((o) => o.value !== '' && norm(o.label).includes(t))
+    if (creatable && !all.some((o) => norm(o.label) === t)) found.push({ value: q.trim(), label: `Добавить «${q.trim()}»` })
+    return found
+  }, [options, placeholder, q, creatable])
 
   const close = (focusTrigger = true) => {
     setOpen(false)
@@ -154,7 +160,7 @@ export function Select({ value = '', onChange, options, label, hint, error, plac
                     setHl(0)
                   }}
                   onKeyDown={onListKey}
-                  placeholder="Поиск"
+                  placeholder={creatable ? "Найти или ввести новый" : "Поиск"}
                   className="h-full min-w-0 flex-1 bg-transparent outline-none placeholder:text-subtle"
                 />
                 {q && (

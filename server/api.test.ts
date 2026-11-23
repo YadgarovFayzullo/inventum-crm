@@ -409,4 +409,20 @@ describe('API', () => {
     assert.equal((await got()).groupId, undefined, 'ON DELETE SET NULL')
     assert.equal((await call(owner, 'DELETE', '/api/leads/lg1')).status, 200)
   })
+
+  it('онлайн-группа: без кабинета, пересекается только по преподавателю, ссылка только https', async () => {
+    const slot = { days: [7], timeStart: '08:00', timeEnd: '09:00' }
+    const r1 = await call(owner, 'POST', '/api/groups', group('on1', 't1', { ...slot, room: '5', online: true, meetingUrl: 'https://meet.google.com/abc' }))
+    assert.equal(r1.status, 200)
+    const g = (await call(owner, 'GET', '/api/bootstrap')).body.groups.find((x: any) => x.id === 'on1')
+    assert.deepEqual([g.online, g.room, g.meetingUrl], [true, '', 'https://meet.google.com/abc'], 'кабинет у онлайн-группы сбрасывается')
+    assert.equal((await call(owner, 'POST', '/api/groups', group('on2', 't2', { ...slot, room: '', online: true }))).status, 200, 'другой преподаватель онлайн в то же время — можно')
+    assert.equal((await call(owner, 'POST', '/api/groups', group('on3', 't1', { ...slot, room: '', online: true }))).status, 409, 'тот же преподаватель — пересечение')
+    assert.equal((await call(owner, 'POST', '/api/groups', group('on4', 't2', { ...slot, days: [6], online: true, meetingUrl: 'javascript:alert(1)' }))).status, 400)
+    // перевод в офлайн возвращает кабинет, обратно — снова без кабинета
+    assert.equal((await call(owner, 'PATCH', '/api/groups/on2', { online: false, room: '7', meetingUrl: null })).status, 200)
+    assert.equal((await call(owner, 'PATCH', '/api/groups/on2', { online: true, room: '7' })).status, 200)
+    const g2 = (await call(owner, 'GET', '/api/bootstrap')).body.groups.find((x: any) => x.id === 'on2')
+    assert.deepEqual([g2.online, g2.room, g2.meetingUrl], [true, '', undefined])
+  })
 })

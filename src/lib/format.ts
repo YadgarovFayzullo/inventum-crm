@@ -21,3 +21,6 @@ export const pluralRu = (n: number, one: string, few: string, many: string) => {
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few
   return many
 }
+
+/** «Каб. 101» или «Онлайн» */
+export const placeLabel = (g: { online?: boolean; room: string }) => (g.online ? 'Онлайн' : `Каб. ${g.room || '—'}`)

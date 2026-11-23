@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/cn'
 import { formatDays, isoWeekday, today } from '@/lib/dates'
-import { formatMoney, fullName } from '@/lib/format'
+import { formatMoney, fullName, placeLabel } from '@/lib/format'
 import { GroupFormModal } from '@/components/GroupFormModal'
 import { useAccess } from '@/store/auth'
 import { useCourseMap, useTeacherMap } from '@/store/hooks'
@@ -80,7 +80,7 @@ export default function Groups() {
                   <span className="flex items-center gap-2 text-muted"><Icon name="calendar" size={16} />{formatDays(g.days)}</span>
                   <span className="flex items-center gap-2 text-muted"><Icon name="clock" size={16} />{g.timeStart}–{g.timeEnd}</span>
                   <span className="flex items-center gap-2 truncate text-muted"><Icon name="graduation" size={16} />{t ? fullName(t) : '—'}</span>
-                  <span className="flex items-center gap-2 text-muted"><Icon name="door" size={16} />Каб. {g.room || '—'}</span>
+                  <span className="flex items-center gap-2 text-muted"><Icon name={g.online ? 'location' : 'door'} size={16} />{placeLabel(g)}</span>
                 </div>
                 <div className="mt-auto">
                   <div className="mb-1.5 flex justify-between text-[13px]">

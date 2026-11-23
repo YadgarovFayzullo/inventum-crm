@@ -13,6 +13,7 @@ import { Button, EmptyState, Icon, PageHeader, Select, Tabs } from '@/ui'
 
 const HOUR = 64 // высота часа в пикселях
 const ALL = '__all'
+const ONLINE = '__online'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const fromMinutes = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`
@@ -69,8 +70,12 @@ export default function Schedule() {
     return out
   }, [rooms, active])
 
+  const hasOnline = active.some((g) => g.online)
+  /** Заготовка новой группы под выбранную вкладку */
+  const place = room === ONLINE ? { online: true } : room !== ALL ? { room } : {}
+
   const visible = useMemo(
-    () => active.filter((g) => (room === ALL || normRoom(g.room) === normRoom(room)) && (!teacherId || g.teacherId === teacherId)),
+    () => active.filter((g) => (room === ALL || (room === ONLINE ? !!g.online : !g.online && normRoom(g.room) === normRoom(room))) && (!teacherId || g.teacherId === teacherId)),
     [active, room, teacherId],
   )
 
@@ -117,7 +122,7 @@ export default function Schedule() {
       days: [day],
       timeStart: fromMinutes(start),
       timeEnd: fromMinutes(Math.min(start + 90, 24 * 60 - 1)),
-      ...(room !== ALL ? { room } : {}),
+      ...place,
       ...(teacherId ? { teacherId } : {}),
     })
   }
@@ -127,15 +132,15 @@ export default function Schedule() {
       <PageHeader
         title="Расписание"
         subtitle={`${weekly} ${plural(weekly, 'занятие', 'занятия', 'занятий')} в неделю`}
-        actions={manage ? <Button icon="plus" onClick={() => setDraft({ ...(room !== ALL ? { room } : {}) })}>Новая группа</Button> : undefined}
+        actions={manage ? <Button icon="plus" onClick={() => setDraft({ ...place })}>Новая группа</Button> : undefined}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {roomList.length > 1 && (
+        {roomList.length + (hasOnline ? 1 : 0) > 1 && (
           <Tabs
             value={room}
             onChange={setRoom}
-            tabs={[{ value: ALL, label: 'Все кабинеты' }, ...roomList.map((r) => ({ value: r, label: r }))]}
+            tabs={[{ value: ALL, label: 'Все кабинеты' }, ...roomList.map((r) => ({ value: r, label: r })), ...(hasOnline ? [{ value: ONLINE, label: 'Онлайн' }] : [])]}
           />
         )}
         {manage && teachers.length > 1 && (
@@ -215,14 +220,14 @@ export default function Schedule() {
                         left: `calc(${(lane / lanes) * 100}% + 3px)`,
                         width: `calc(${100 / lanes}% - 6px)`,
                       }}
-                      title={`${g.name} · ${g.timeStart}–${g.timeEnd} · каб. ${g.room || '—'}${t ? ` · ${fullName(t)}` : ''}`}
+                      title={`${g.name} · ${g.timeStart}–${g.timeEnd} · ${g.online ? 'онлайн' : `каб. ${g.room || '—'}`}${t ? ` · ${fullName(t)}` : ''}`}
                     >
                       <span className="flex items-center gap-1 truncate font-medium text-fg">
                         {bad && <Icon name="info" size={13} className="shrink-0 text-primary-active" />}
                         <span className="truncate">{g.name}</span>
                       </span>
                       <span className="truncate text-muted tabular-nums">{g.timeStart}–{g.timeEnd}</span>
-                      {!short && <span className="truncate text-muted">{room === ALL && roomList.length > 1 ? `Каб. ${g.room} · ` : ''}{t ? fullName(t) : '—'}</span>}
+                      {!short && <span className="truncate text-muted">{g.online ? 'Онлайн · ' : room === ALL && roomList.length > 1 ? `Каб. ${g.room} · ` : ''}{t ? fullName(t) : '—'}</span>}
                     </button>
                   )
                 })}

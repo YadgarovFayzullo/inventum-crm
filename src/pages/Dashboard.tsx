@@ -154,7 +154,7 @@ export default function Dashboard() {
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{g.name}</div>
                       <div className="truncate text-[13px] text-muted">
-                        {courseMap.get(g.courseId)?.name} · {t ? fullName(t) : '—'} · каб. {g.room}
+                        {courseMap.get(g.courseId)?.name} · {t ? fullName(t) : '—'} · {g.online ? 'онлайн' : `каб. ${g.room}`}
                       </div>
                     </div>
                     {marked === count && count > 0 ? <Badge tone="dark">Отмечено</Badge> : <Badge tone="soft">{marked}/{count}</Badge>}

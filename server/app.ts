@@ -60,6 +60,7 @@ const toTeacher = (r: Row, salary: boolean): Teacher => ({
 const toGroup = (r: Row, money: boolean): Group => ({
   id: r.id, name: r.name, courseId: r.course_id, teacherId: r.teacher_id, days: r.days, timeStart: r.time_start,
   timeEnd: r.time_end, room: r.room, price: money ? r.price : 0, capacity: r.capacity, startDate: r.start_date, archived: r.archived,
+  online: r.online, meetingUrl: r.meeting_url ?? undefined,
 })
 const toEnrollment = (r: Row): Enrollment => ({ id: r.id, studentId: r.student_id, groupId: r.group_id, startDate: r.start_date, endDate: r.end_date ?? undefined })
 const toTransfer = (r: Row): Transfer => ({ id: r.id, studentId: r.student_id, fromGroupId: r.from_group_id, toGroupId: r.to_group_id, date: r.date, reason: r.reason ?? undefined })
@@ -337,30 +338,34 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
 
   /* ---------------- группы ---------------- */
   app.post('/api/groups', { preHandler: staff }, async (req) => {
-    const g = S.group.parse(req.body)
+    const parsed = S.group.parse(req.body)
+    // у онлайн-группы нет кабинета: она не занимает аудиторию и пересекается только по преподавателю
+    const g = { ...parsed, room: parsed.online ? '' : parsed.room }
     await sql.begin(async (tx) => {
       await assertNoConflicts(tx, g)
-      await tx`INSERT INTO groups (id, name, course_id, teacher_id, days, time_start, time_end, room, price, capacity, start_date, archived)
-        VALUES (${g.id}, ${g.name}, ${g.courseId}, ${g.teacherId}, ${tx.json(g.days)}, ${g.timeStart}, ${g.timeEnd}, ${g.room}, ${g.price}, ${g.capacity}, ${g.startDate}, ${g.archived})`
+      await tx`INSERT INTO groups (id, name, course_id, teacher_id, days, time_start, time_end, room, price, capacity, start_date, archived, online, meeting_url)
+        VALUES (${g.id}, ${g.name}, ${g.courseId}, ${g.teacherId}, ${tx.json(g.days)}, ${g.timeStart}, ${g.timeEnd}, ${g.room}, ${g.price}, ${g.capacity}, ${g.startDate}, ${g.archived}, ${g.online}, ${g.meetingUrl ?? null})`
     })
     return ok
   })
   app.patch('/api/groups/:id', { preHandler: staff }, async (req, reply) => {
     const { id } = idParam.parse(req.params)
-    const { days, ...patch } = S.groupPatch.parse(req.body)
+    const { days, ...input } = S.groupPatch.parse(req.body)
+    const patch = input.online ? { ...input, room: '' } : input
     const cols = toColumns(patch, {
       name: 'name', courseId: 'course_id', teacherId: 'teacher_id', timeStart: 'time_start', timeEnd: 'time_end',
       room: 'room', price: 'price', capacity: 'capacity', startDate: 'start_date', archived: 'archived',
+      online: 'online', meetingUrl: 'meeting_url',
     })
     const found = await sql.begin(async (tx) => {
-      const [cur] = await tx`SELECT teacher_id, days, time_start, time_end, room, archived FROM groups WHERE id = ${id}`
+      const [cur] = await tx`SELECT teacher_id, days, time_start, time_end, room, archived, online FROM groups WHERE id = ${id}`
       if (!cur) return false
       // переименование или смена цены расписание не трогает — проверяем только когда меняется слот
-      const touches = days || ['teacherId', 'timeStart', 'timeEnd', 'room', 'archived'].some((k) => k in patch)
+      const touches = days || ['teacherId', 'timeStart', 'timeEnd', 'room', 'archived', 'online'].some((k) => k in patch)
       if (touches) {
         await assertNoConflicts(tx, {
           id, teacherId: patch.teacherId ?? cur.teacher_id, days: days ?? cur.days, timeStart: patch.timeStart ?? cur.time_start,
-          timeEnd: patch.timeEnd ?? cur.time_end, room: patch.room ?? cur.room, archived: patch.archived ?? cur.archived,
+          timeEnd: patch.timeEnd ?? cur.time_end, room: (patch.online ?? cur.online) ? '' : (patch.room ?? cur.room), archived: patch.archived ?? cur.archived,
         })
       }
       if (Object.keys(cols).length) await tx`UPDATE groups SET ${tx(cols)} WHERE id = ${id}`
@@ -589,7 +594,7 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
       for (const c of d.courses) await tx`INSERT INTO courses (id, name, price, duration_months, description) VALUES (${c.id}, ${c.name}, ${c.price}, ${c.durationMonths}, ${c.description ?? null})`
       for (const t of d.teachers) await tx`INSERT INTO teachers (id, first_name, last_name, phone, subject, salary_percent, created_at) VALUES (${t.id}, ${t.firstName}, ${t.lastName}, ${t.phone}, ${t.subject}, ${t.salaryPercent}, ${t.createdAt})`
       for (const s of [...d.students].reverse()) await tx`INSERT INTO students (id, first_name, last_name, phone, parent_name, parent_phone, birth_date, source, note, status, discount, created_at) VALUES (${s.id}, ${s.firstName}, ${s.lastName}, ${s.phone}, ${s.parentName}, ${s.parentPhone}, ${s.birthDate ?? null}, ${s.source ?? null}, ${s.note ?? null}, ${s.status}, ${s.discount}, ${s.createdAt})`
-      for (const g of d.groups) await tx`INSERT INTO groups (id, name, course_id, teacher_id, days, time_start, time_end, room, price, capacity, start_date, archived) VALUES (${g.id}, ${g.name}, ${g.courseId}, ${g.teacherId}, ${tx.json(g.days)}, ${g.timeStart}, ${g.timeEnd}, ${g.room}, ${g.price}, ${g.capacity}, ${g.startDate}, ${g.archived})`
+      for (const g of d.groups) await tx`INSERT INTO groups (id, name, course_id, teacher_id, days, time_start, time_end, room, price, capacity, start_date, archived, online, meeting_url) VALUES (${g.id}, ${g.name}, ${g.courseId}, ${g.teacherId}, ${tx.json(g.days)}, ${g.timeStart}, ${g.timeEnd}, ${g.online ? '' : g.room}, ${g.price}, ${g.capacity}, ${g.startDate}, ${g.archived}, ${g.online}, ${g.meetingUrl ?? null})`
       for (const e of d.enrollments) await tx`INSERT INTO enrollments (id, student_id, group_id, start_date, end_date) VALUES (${e.id}, ${e.studentId}, ${e.groupId}, ${e.startDate}, ${e.endDate ?? null})`
       for (const t of [...d.transfers].reverse()) await tx`INSERT INTO transfers (id, student_id, from_group_id, to_group_id, date, reason) VALUES (${t.id}, ${t.studentId}, ${t.fromGroupId}, ${t.toGroupId}, ${t.date}, ${t.reason ?? null})`
       const att = Object.entries(d.attendance).map(([k, m]) => {
