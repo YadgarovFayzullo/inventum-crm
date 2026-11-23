@@ -18,14 +18,16 @@ await migrate(sql)
 // Первый запуск: создаём владельца. Пароль берём из окружения или генерируем и один раз показываем в логе.
 const [{ n }] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM users`
 if (n === 0) {
-  const email = (env.OWNER_EMAIL ?? 'owner@inventum.uz').toLowerCase()
-  const password = env.OWNER_PASSWORD ?? randomBytes(9).toString('base64url')
+  // Пустая переменная (docker-compose и Railway подставляют '') считается незаданной — иначе владелец получит пустой пароль и не сможет войти
+  const given = env.OWNER_PASSWORD?.trim()
+  const email = (env.OWNER_EMAIL?.trim() || 'owner@inventum.uz').toLowerCase()
+  const password = given || randomBytes(9).toString('base64url')
   await sql`INSERT INTO users (id, email, password_hash, role, teacher_id, name, created_at)
     VALUES (${randomBytes(16).toString('hex')}, ${email}, ${await hashPassword(password)}, 'owner', NULL, 'Владелец', ${new Date().toISOString().slice(0, 10)})`
   console.log('\n  Создан владелец')
   console.log(`  email:  ${email}`)
-  console.log(`  пароль: ${env.OWNER_PASSWORD ? '(из OWNER_PASSWORD)' : password}`)
-  if (!env.OWNER_PASSWORD) console.log('  Сохраните пароль — больше он нигде не показывается. Сменить можно в Настройки → Пользователи.\n')
+  console.log(`  пароль: ${given ? '(из OWNER_PASSWORD)' : password}`)
+  if (!given) console.log('  Сохраните пароль — больше он нигде не показывается. Сменить можно в Настройки → Пользователи.\n')
 }
 
 const { storage, driver } = storageFromEnv(env)
