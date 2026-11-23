@@ -64,7 +64,9 @@ const toGroup = (r: Row, money: boolean): Group => ({
 const toEnrollment = (r: Row): Enrollment => ({ id: r.id, studentId: r.student_id, groupId: r.group_id, startDate: r.start_date, endDate: r.end_date ?? undefined })
 const toTransfer = (r: Row): Transfer => ({ id: r.id, studentId: r.student_id, fromGroupId: r.from_group_id, toGroupId: r.to_group_id, date: r.date, reason: r.reason ?? undefined })
 const toPayment = (r: Row): Payment => ({ id: r.id, studentId: r.student_id, groupId: r.group_id, amount: r.amount, method: r.method, date: r.date, comment: r.comment ?? undefined })
-const toLead = (r: Row): Lead => ({ id: r.id, name: r.name, phone: r.phone, courseId: r.course_id ?? undefined, source: r.source, status: r.status, note: r.note ?? undefined, createdAt: r.created_at })
+const toLead = (r: Row): Lead => ({ id: r.id, name: r.name, phone: r.phone, courseId: r.course_id ?? undefined, source: r.source, status: r.status, note: r.note ?? undefined, createdAt: r.created_at,
+  groupId: r.group_id ?? undefined, preferredDays: r.preferred_days ?? undefined, preferredSlot: r.preferred_slot ?? undefined,
+})
 const attMap = (rows: Row[]) => Object.fromEntries(rows.map((r) => [`${r.g}|${r.d}|${r.s}`, r.m]))
 
 /** Настройки центра. Пока список кабинетов не сохраняли — берём кабинеты из существующих групп. */
@@ -453,13 +455,18 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
 
   app.post('/api/leads', { preHandler: staff }, async (req) => {
     const l = S.lead.parse(req.body)
-    await sql`INSERT INTO leads (id, name, phone, course_id, source, status, note, created_at)
-      VALUES (${l.id}, ${l.name}, ${l.phone}, ${l.courseId ?? null}, ${l.source}, ${l.status}, ${l.note ?? null}, ${l.createdAt})`
+    await sql`INSERT INTO leads (id, name, phone, course_id, source, status, note, created_at, group_id, preferred_days, preferred_slot)
+      VALUES (${l.id}, ${l.name}, ${l.phone}, ${l.courseId ?? null}, ${l.source}, ${l.status}, ${l.note ?? null}, ${l.createdAt},
+        ${l.groupId ?? null}, ${l.preferredDays ? sql.json(l.preferredDays) : null}, ${l.preferredSlot ?? null})`
     return ok
   })
   app.patch('/api/leads/:id', { preHandler: staff }, async (req) => {
     const { id } = idParam.parse(req.params)
-    const cols = toColumns(S.leadPatch.parse(req.body), { name: 'name', phone: 'phone', courseId: 'course_id', source: 'source', status: 'status', note: 'note' })
+    const patch = S.leadPatch.parse(req.body)
+    const cols = toColumns(
+      { ...patch, preferredDays: patch.preferredDays ? sql.json(patch.preferredDays) : patch.preferredDays },
+      { name: 'name', phone: 'phone', courseId: 'course_id', source: 'source', status: 'status', note: 'note', groupId: 'group_id', preferredDays: 'preferred_days', preferredSlot: 'preferred_slot' },
+    )
     if (Object.keys(cols).length) await sql`UPDATE leads SET ${sql(cols)} WHERE id = ${id}`
     return ok
   })
@@ -591,7 +598,7 @@ export function buildApp({ sql, storage, staticDir, secureCookie = false, logger
       })
       for (let i = 0; i < att.length; i += 1000) await tx`INSERT INTO attendance ${tx(att.slice(i, i + 1000))} ON CONFLICT DO NOTHING`
       for (const p of [...d.payments].reverse()) await tx`INSERT INTO payments (id, student_id, group_id, amount, method, date, comment) VALUES (${p.id}, ${p.studentId}, ${p.groupId}, ${p.amount}, ${p.method}, ${p.date}, ${p.comment ?? null})`
-      for (const l of [...d.leads].reverse()) await tx`INSERT INTO leads (id, name, phone, course_id, source, status, note, created_at) VALUES (${l.id}, ${l.name}, ${l.phone}, ${l.courseId ?? null}, ${l.source}, ${l.status}, ${l.note ?? null}, ${l.createdAt})`
+      for (const l of [...d.leads].reverse()) await tx`INSERT INTO leads (id, name, phone, course_id, source, status, note, created_at, group_id, preferred_days, preferred_slot) VALUES (${l.id}, ${l.name}, ${l.phone}, ${l.courseId ?? null}, ${l.source}, ${l.status}, ${l.note ?? null}, ${l.createdAt}, ${l.groupId ?? null}, ${l.preferredDays ? tx.json(l.preferredDays) : null}, ${l.preferredSlot ?? null})`
       await tx`INSERT INTO settings (key, value) VALUES ('centerName', ${d.settings.centerName}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
       if (d.settings.rooms) await tx`INSERT INTO settings (key, value) VALUES ('rooms', ${JSON.stringify(d.settings.rooms)}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
       else await tx`DELETE FROM settings WHERE key = 'rooms'`

@@ -86,6 +86,9 @@ export interface Payment {
 
 export type LeadStatus = 'new' | 'contacted' | 'trial' | 'won' | 'lost'
 
+/** Удобное время занятий: утро — до 12:00, день — 12:00–17:00, вечер — с 17:00 */
+export type TimeSlot = 'morning' | 'afternoon' | 'evening'
+
 export interface Lead {
   id: ID
   name: string
@@ -95,6 +98,11 @@ export interface Lead {
   status: LeadStatus
   note?: string
   createdAt: string
+  /** Группа, в которую ведём лида: пока лид открыт, он занимает в ней место «в заявках» */
+  groupId?: ID
+  /** Удобные дни (ISO: 1 = Пн … 7 = Вс) */
+  preferredDays?: number[]
+  preferredSlot?: TimeSlot
 }
 
 export interface Settings {

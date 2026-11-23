@@ -185,6 +185,8 @@ export const useStore = create<Data & Actions & { loaded: boolean }>()((set, get
     set((st) => ({
       groups: st.groups.filter((g) => g.id !== id),
       enrollments: st.enrollments.filter((e) => e.groupId !== id),
+      // на сервере то же делает ON DELETE SET NULL
+      leads: st.leads.map((l) => (l.groupId === id ? { ...l, groupId: undefined } : l)),
       attendance: Object.fromEntries(Object.entries(st.attendance).filter(([k]) => !k.startsWith(`${id}|`))),
     }))
     push(() => api.del(`/groups/${id}`))
@@ -254,7 +256,7 @@ export const useStore = create<Data & Actions & { loaded: boolean }>()((set, get
   },
   updateLead: (id, patch) => {
     set((st) => ({ leads: patchById(st.leads, id, patch) }))
-    push(() => api.patch(`/leads/${id}`, clearable(patch, ['courseId', 'note'])))
+    push(() => api.patch(`/leads/${id}`, clearable(patch, ['courseId', 'note', 'groupId', 'preferredDays', 'preferredSlot'])))
   },
   deleteLead: (id) => {
     set((st) => ({ leads: st.leads.filter((l) => l.id !== id) }))
@@ -267,7 +269,7 @@ export const useStore = create<Data & Actions & { loaded: boolean }>()((set, get
       { firstName, lastName: rest.join(' ') || '—', phone: lead.phone, parentName: '', parentPhone: '', status: 'active', discount: 0, source: lead.source, note: lead.note },
       groupId,
     )
-    get().updateLead(id, { status: 'won' })
+    get().updateLead(id, { status: 'won', groupId })
     return studentId
   },
 

@@ -5,14 +5,15 @@ import { formatDays, isoWeekday, today } from '@/lib/dates'
 import { formatMoney, fullName } from '@/lib/format'
 import { GroupFormModal } from '@/components/GroupFormModal'
 import { useAccess } from '@/store/auth'
-import { enrollmentsOf, useCourseMap, useEnrollmentsByGroup, useTeacherMap } from '@/store/hooks'
+import { useCourseMap, useTeacherMap } from '@/store/hooks'
+import { seatsOf, useSeats } from '@/store/seats'
 import { useStore } from '@/store/store'
 import { Badge, Button, EmptyState, Icon, Input, PageHeader, Tabs } from '@/ui'
 
 export default function Groups() {
   const navigate = useNavigate()
   const groups = useStore((s) => s.groups)
-  const byGroup = useEnrollmentsByGroup()
+  const seats = useSeats()
   const courseMap = useCourseMap()
   const teacherMap = useTeacherMap()
   const [tab, setTab] = useState<'active' | 'archived'>('active')
@@ -56,8 +57,10 @@ export default function Groups() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {list.map((g) => {
-            const count = enrollmentsOf(byGroup, g.id).filter((e) => !e.endDate).length
-            const fill = Math.min(1, count / g.capacity)
+            const st = seatsOf(seats, g.id)
+            const fill = Math.min(1, st.enrolled / g.capacity)
+            // заявки рисуем вслед за учениками, но не дальше конца полоски
+            const reservedFill = Math.min(1 - fill, st.reserved / g.capacity)
             const t = teacherMap.get(g.teacherId)
             const isToday = g.days.includes(wd)
             return (
@@ -81,11 +84,15 @@ export default function Groups() {
                 </div>
                 <div className="mt-auto">
                   <div className="mb-1.5 flex justify-between text-[13px]">
-                    <span>{count} из {g.capacity} мест</span>
+                    <span>
+                      {st.enrolled} из {g.capacity} мест
+                      {st.reserved > 0 && <span className="text-primary"> · +{st.reserved} в заявках</span>}
+                    </span>
                     {money && <span className="text-muted">{formatMoney(g.price)}/мес</span>}
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-canvas">
-                    <div className={cn('h-full rounded-full', fill >= 1 ? 'bg-ink' : 'bg-primary')} style={{ width: `${fill * 100}%` }} />
+                  <div className="flex h-1.5 overflow-hidden rounded-full bg-canvas">
+                    <div className={cn('h-full', fill >= 1 ? 'bg-ink' : 'bg-primary')} style={{ width: `${fill * 100}%` }} />
+                    {reservedFill > 0 && <div className="h-full bg-primary-soft-2" style={{ width: `${reservedFill * 100}%` }} />}
                   </div>
                 </div>
               </Link>

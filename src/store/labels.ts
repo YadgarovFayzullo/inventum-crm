@@ -1,4 +1,4 @@
-import type { AttendanceMark, LeadStatus, PaymentMethod, StudentStatus } from './types'
+import type { AttendanceMark, LeadStatus, PaymentMethod, StudentStatus, TimeSlot } from './types'
 import type { BadgeTone } from '@/ui'
 
 export const STUDENT_STATUS: Record<StudentStatus, { label: string; tone: BadgeTone }> = {
@@ -31,3 +31,10 @@ export const MARK: Record<AttendanceMark, string> = {
 }
 
 export const LEAD_SOURCES = ['Instagram', 'Telegram', 'Рекомендация', 'Сайт', 'Баннер', 'Другое']
+
+export const TIME_SLOT: Record<TimeSlot, string> = {
+  morning: 'Утро (до 12:00)',
+  afternoon: 'День (12–17)',
+  evening: 'Вечер (после 17)',
+}
+export const TIME_SLOT_SHORT: Record<TimeSlot, string> = { morning: 'утро', afternoon: 'день', evening: 'вечер' }

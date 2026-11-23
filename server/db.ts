@@ -132,6 +132,13 @@ const MIGRATIONS: string[] = [
   ALTER TABLE finance_entries ADD COLUMN recurring_id text;
   CREATE INDEX finance_entries_recurring ON finance_entries(recurring_id) WHERE recurring_id IS NOT NULL;
   `,
+  `
+  -- Лид знает, в какую группу его ведут и когда ему удобно заниматься
+  ALTER TABLE leads ADD COLUMN group_id text REFERENCES groups(id) ON DELETE SET NULL;
+  ALTER TABLE leads ADD COLUMN preferred_days jsonb;
+  ALTER TABLE leads ADD COLUMN preferred_slot text CHECK (preferred_slot IN ('morning','afternoon','evening'));
+  CREATE INDEX leads_group ON leads(group_id) WHERE group_id IS NOT NULL;
+  `,
 ]
 
 export async function migrate(sql: Sql) {

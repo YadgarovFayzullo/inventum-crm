@@ -145,14 +145,14 @@ export function createSeed(): Data {
   }
 
   const leads: Lead[] = [
-    { id: 'l-1', name: 'Анвар Холматов', phone: phone(), courseId: 'c-ielts', source: 'Instagram', status: 'new', createdAt: now },
-    { id: 'l-2', name: 'Лола Азимова', phone: phone(), courseId: 'c-en', source: 'Telegram', status: 'new', createdAt: addDays(now, -1) },
-    { id: 'l-3', name: 'Бобур Султанов', phone: phone(), courseId: 'c-fe', source: 'Сайт', status: 'contacted', note: 'Перезвонить вечером', createdAt: addDays(now, -2) },
+    { id: 'l-1', name: 'Анвар Холматов', phone: phone(), courseId: 'c-ielts', source: 'Instagram', status: 'new', preferredDays: [1, 3, 5], preferredSlot: 'evening', createdAt: now },
+    { id: 'l-2', name: 'Лола Азимова', phone: phone(), courseId: 'c-en', source: 'Telegram', status: 'new', preferredSlot: 'morning', createdAt: addDays(now, -1) },
+    { id: 'l-3', name: 'Бобур Султанов', phone: phone(), courseId: 'c-fe', source: 'Сайт', status: 'contacted', note: 'Перезвонить вечером', groupId: 'g-6', preferredSlot: 'evening', createdAt: addDays(now, -2) },
     { id: 'l-4', name: 'Камила Турсунова', phone: phone(), courseId: 'c-math', source: 'Рекомендация', status: 'contacted', createdAt: addDays(now, -3) },
-    { id: 'l-5', name: 'Даврон Исмоилов', phone: phone(), courseId: 'c-fe', source: 'Instagram', status: 'trial', note: 'Пробный в субботу', createdAt: addDays(now, -4) },
-    { id: 'l-6', name: 'Сардора Ахмедова', phone: phone(), courseId: 'c-en', source: 'Баннер', status: 'trial', createdAt: addDays(now, -5) },
+    { id: 'l-5', name: 'Даврон Исмоилов', phone: phone(), courseId: 'c-fe', source: 'Instagram', status: 'trial', note: 'Пробный в субботу', groupId: 'g-6', preferredDays: [2, 4, 6], createdAt: addDays(now, -4) },
+    { id: 'l-6', name: 'Сардора Ахмедова', phone: phone(), courseId: 'c-en', source: 'Баннер', status: 'trial', groupId: 'g-2', createdAt: addDays(now, -5) },
     { id: 'l-7', name: 'Жамшид Носиров', phone: phone(), courseId: 'c-ru', source: 'Telegram', status: 'lost', note: 'Дорого', createdAt: addDays(now, -9) },
-    { id: 'l-8', name: 'Фарида Юлдашева', phone: phone(), courseId: 'c-ielts', source: 'Instagram', status: 'won', createdAt: addDays(now, -12) },
+    { id: 'l-8', name: 'Фарида Юлдашева', phone: phone(), courseId: 'c-ielts', source: 'Instagram', status: 'won', groupId: 'g-3', createdAt: addDays(now, -12) },
   ]
 
   return { students, courses, teachers, groups, enrollments, transfers, attendance, payments, leads, settings: { centerName: 'INVENTUM', rooms: ['101', '102', '203', 'IT-lab'] } }

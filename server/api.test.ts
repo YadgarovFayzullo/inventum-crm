@@ -386,4 +386,27 @@ describe('API', () => {
     assert.ok(!b.enrollments.some((e: any) => e.groupId === 'g1'))
     assert.ok(!Object.keys(b.attendance).some((k) => k.startsWith('g1|')))
   })
+
+  it('лид: группа, удобные дни и время; группа удалена — лид остаётся без группы', async () => {
+    assert.equal((await call(owner, 'POST', '/api/groups', group('gl1', 't1', { room: '8', days: [6], timeStart: '18:00', timeEnd: '19:00' }))).status, 200)
+    const lead = { id: 'lg1', name: 'Лид с группой', phone: '901112244', source: 'Instagram', status: 'trial', createdAt: d(3), courseId: 'c1', groupId: 'gl1', preferredDays: [1, 3], preferredSlot: 'evening' }
+    assert.equal((await call(owner, 'POST', '/api/leads', lead)).status, 200)
+    assert.equal((await call(owner, 'POST', '/api/leads', { ...lead, id: 'lg2', preferredSlot: 'night' })).status, 400, 'неизвестное время')
+    assert.equal((await call(owner, 'POST', '/api/leads', { ...lead, id: 'lg3', preferredDays: [0] })).status, 400, 'день вне 1–7')
+    assert.equal((await call(owner, 'POST', '/api/leads', { ...lead, id: 'lg4', groupId: 'ghost' })).status, 400, 'группы нет')
+    const got = () => call(owner, 'GET', '/api/bootstrap').then((r) => r.body.leads.find((l: any) => l.id === 'lg1'))
+    const l = await got()
+    assert.deepEqual([l.groupId, l.preferredDays, l.preferredSlot], ['gl1', [1, 3], 'evening'])
+
+    assert.equal((await call(manager, 'PATCH', '/api/leads/lg1', { groupId: null, preferredDays: null, preferredSlot: null })).status, 200)
+    const cleared = await got()
+    assert.deepEqual([cleared.groupId, cleared.preferredDays, cleared.preferredSlot], [undefined, undefined, undefined])
+
+    assert.equal((await call(owner, 'POST', '/api/groups', group('gl', 't1', { room: '9', days: [7], timeStart: '18:00', timeEnd: '19:00' }))).status, 200)
+    assert.equal((await call(manager, 'PATCH', '/api/leads/lg1', { groupId: 'gl', preferredDays: [2, 4] })).status, 200)
+    assert.deepEqual([(await got()).groupId, (await got()).preferredDays], ['gl', [2, 4]])
+    assert.equal((await call(owner, 'DELETE', '/api/groups/gl')).status, 200)
+    assert.equal((await got()).groupId, undefined, 'ON DELETE SET NULL')
+    assert.equal((await call(owner, 'DELETE', '/api/leads/lg1')).status, 200)
+  })
 })

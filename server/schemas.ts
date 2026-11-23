@@ -6,11 +6,13 @@ const phone = z.string().regex(/^\d{0,9}$/)
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
 const time = z.string().regex(/^\d{2}:\d{2}$/)
 const money = z.number().int().min(0).max(100_000_000_000)
+const weekdays = z.array(z.number().int().min(1).max(7)).max(7)
 
 export const studentStatus = z.enum(['active', 'frozen', 'left'])
 export const mark = z.enum(['present', 'absent', 'late', 'excused'])
 export const method = z.enum(['cash', 'card', 'click', 'payme', 'transfer'])
 export const leadStatus = z.enum(['new', 'contacted', 'trial', 'won', 'lost'])
+export const timeSlot = z.enum(['morning', 'afternoon', 'evening'])
 export const role = z.enum(['owner', 'manager', 'teacher', 'accountant'])
 export const financeKind = z.enum(['income', 'expense'])
 
@@ -90,8 +92,20 @@ export const lead = z.object({
   status: leadStatus,
   note: z.string().max(2000).optional(),
   createdAt: date,
+  groupId: id.optional(),
+  preferredDays: weekdays.optional(),
+  preferredSlot: timeSlot.optional(),
 })
-export const leadPatch = lead.omit({ id: true, createdAt: true, courseId: true, note: true }).extend({ courseId: z.string().max(40).nullable(), note: z.string().max(2000).nullable() }).partial()
+export const leadPatch = lead
+  .omit({ id: true, createdAt: true, courseId: true, note: true, groupId: true, preferredDays: true, preferredSlot: true })
+  .extend({
+    courseId: z.string().max(40).nullable(),
+    note: z.string().max(2000).nullable(),
+    groupId: id.nullable(),
+    preferredDays: weekdays.nullable(),
+    preferredSlot: timeSlot.nullable(),
+  })
+  .partial()
 
 export const financeEntry = z.object({
   id,
